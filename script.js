@@ -1,79 +1,87 @@
 /* =========================================================
-   ROBLOX AVATAR RATING
-   SUPABASE + SUPABASE STORAGE
+   ROBLOX AVATAR RATING — SUPABASE + STORAGE
+   VERCEL READY
    =========================================================
 
-   Database:
-   public.avatars
-
-   Storage:
-   avatars
-
-   Fitur:
-   - Add Avatar
-   - Edit Avatar
-   - Delete Avatar
-   - Drag & Drop Tier
+   FEATURES
+   ---------------------------------------------------------
+   PUBLIC
+   - Load avatars from Supabase
    - Search
-   - Filter
+   - Filter by tier
+   - Avatar detail modal
+   - Copy outfit code
+   - Statistics
+
+   ADMIN
+   - Secure login through /api/admin-login
+   - Add avatar
+   - Edit avatar
+   - Delete avatar
+   - Upload image to Supabase Storage
+   - Drag & drop between tiers
+   - Reorder avatars
    - Import JSON
    - Export JSON
-   - Supabase Database
-   - Supabase Storage
-   - Admin Login via /api/admin-login
+   - Logout
 
-   PENTING:
-   - Gunakan SUPABASE PUBLISHABLE KEY / ANON KEY.
-   - JANGAN masukkan service_role key ke frontend.
-========================================================= */
+   IMPORTANT
+   ---------------------------------------------------------
+   Password is NEVER stored in this frontend code.
+
+   Supabase ANON KEY is safe to expose in frontend
+   ONLY when your Supabase RLS policies are configured
+   correctly.
+
+   EXPECTED DATABASE TABLE
+   ---------------------------------------------------------
+   Table:
+     avatars
+
+   Columns:
+     id
+     username
+     display_name
+     outfit_code
+     profile_url
+     image_url
+     score
+     tier
+     comment
+     rated_at
+     sort_order
+     created_at
+     updated_at
+
+   EXPECTED STORAGE BUCKET
+   ---------------------------------------------------------
+   avatars
+
+   ========================================================= */
 
 "use strict";
 
 /* =========================================================
-   SUPABASE CONFIG
+   CONFIG
 ========================================================= */
 
-// GANTI DENGAN DATA SUPABASE PROJECT KAMU
-const SUPABASE_URL = "GANTI_DENGAN_SUPABASE_URL";
-const SUPABASE_PUBLISHABLE_KEY = "GANTI_DENGAN_SUPABASE_PUBLISHABLE_KEY";
+const SUPABASE_URL = "GANTI_DENGAN_SUPABASE_URL_ANDA";
+const SUPABASE_ANON_KEY = "GANTI_DENGAN_SUPABASE_ANON_KEY_ANDA";
 
-if (!window.supabase) {
-  console.error(
-    "Supabase JS belum dimuat. Pastikan index.html memiliki:",
-    '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>'
-  );
-}
+const SUPABASE_TABLE = "avatars";
+const SUPABASE_BUCKET = "avatars";
 
-const supabaseClient =
-  window.supabase?.createClient(
-    SUPABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY
-  );
-
-/* =========================================================
-   CONSTANTS
-========================================================= */
-
-const STORAGE_BUCKET = "avatars";
-
-const ADMIN_SESSION_KEY = "roblox_avatar_admin_session_v2";
+const ADMIN_SESSION_KEY = "roblox_avatar_admin_session_v3";
 const ADMIN_SESSION_MAX_AGE = 8 * 60 * 60 * 1000;
 
-const DEFAULT_AVATARS = [];
+const TIERS = ["S", "A", "B", "C", "D"];
 
-const ALLOWED_TIERS = ["S", "A", "B", "C", "D"];
-
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-
-const ALLOWED_IMAGE_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/webp"
-];
 
 /* =========================================================
-   STATE
+   GLOBAL STATE
 ========================================================= */
+
+let supabaseClient = null;
 
 let avatars = [];
 
@@ -82,295 +90,1599 @@ let currentSearch = "";
 
 let editingAvatarId = null;
 
-let selectedImageData = "";
 let selectedImageFile = null;
+let selectedImagePreviewUrl = null;
 
-let originalImagePath = "";
+let draggedAvatarId = null;
+let draggedElement = null;
+
+let isSaving = false;
+let isLoading = false;
+
 
 /* =========================================================
-   HELPERS
+   DOM HELPERS
 ========================================================= */
 
-const $ = (id) => document.getElementById(id);
-
-function showElement(element) {
-  if (!element) return;
-
-  element.classList.remove("hidden");
-  element.classList.add("flex");
+function $(id) {
+  return document.getElementById(id);
 }
 
-function hideElement(element) {
-  if (!element) return;
-
-  element.classList.add("hidden");
-  element.classList.remove("flex");
+function query(selector, parent = document) {
+  return parent.querySelector(selector);
 }
+
+function queryAll(selector, parent = document) {
+  return [...parent.querySelectorAll(selector)];
+}
+
+
+/* =========================================================
+   SAFE HTML
+========================================================= */
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+
+/* =========================================================
+   UUID
+========================================================= */
 
 function generateId() {
-  if (window.crypto?.randomUUID) {
+  if (window.crypto && crypto.randomUUID) {
     return crypto.randomUUID();
   }
 
   return (
     Date.now().toString(36) +
-    Math.random().toString(36).slice(2)
+    Math.random().toString(36).substring(2, 12)
   );
 }
 
-function getFileExtension(file) {
-  if (!file) return "webp";
-
-  const type = file.type;
-
-  if (type === "image/png") return "png";
-  if (type === "image/jpeg") return "jpg";
-  if (type === "image/webp") return "webp";
-
-  return "webp";
-}
-
-function createStorageFileName(file, avatarId) {
-  const extension = getFileExtension(file);
-
-  return `${avatarId}-${Date.now()}.${extension}`;
-}
-
-function normalizeAvatar(avatar) {
-  return {
-    id: avatar.id,
-
-    username: avatar.username || "",
-
-    displayName:
-      avatar.display_name ||
-      avatar.displayName ||
-      "",
-
-    outfitCode:
-      avatar.outfit_code ||
-      avatar.outfitCode ||
-      "",
-
-    profileUrl:
-      avatar.profile_url ||
-      avatar.profileUrl ||
-      "",
-
-    image: avatar.image || "",
-
-    imagePath:
-      avatar.image_path ||
-      avatar.imagePath ||
-      "",
-
-    score: Number(avatar.score || 0),
-
-    tier: ALLOWED_TIERS.includes(avatar.tier)
-      ? avatar.tier
-      : "S",
-
-    comment: avatar.comment || "",
-
-    date:
-      avatar.created_at ||
-      avatar.date ||
-      avatar.createdAt ||
-      null,
-
-    createdAt:
-      avatar.created_at ||
-      avatar.createdAt ||
-      null,
-
-    updatedAt:
-      avatar.updated_at ||
-      avatar.updatedAt ||
-      null
-  };
-}
-
-function avatarToDatabase(avatar) {
-  return {
-    id: avatar.id,
-
-    username: avatar.username,
-
-    display_name: avatar.displayName || "",
-
-    outfit_code: avatar.outfitCode || "",
-
-    profile_url: avatar.profileUrl || "",
-
-    image: avatar.image || "",
-
-    image_path: avatar.imagePath || "",
-
-    score: Number(avatar.score || 0),
-
-    tier: ALLOWED_TIERS.includes(avatar.tier)
-      ? avatar.tier
-      : "S",
-
-    comment: avatar.comment || "",
-
-    updated_at: new Date().toISOString()
-  };
-}
 
 /* =========================================================
-   SUPABASE CHECK
+   DATE
 ========================================================= */
 
-function ensureSupabase() {
-  if (!supabaseClient) {
-    alert(
-      "Supabase belum terhubung.\n\n" +
-      "Periksa SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY " +
-      "dan pastikan Supabase JS sudah dimuat di index.html."
+function formatDate(dateValue) {
+  if (!dateValue) return "-";
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  });
+}
+
+
+/* =========================================================
+   NUMBER
+========================================================= */
+
+function normalizeScore(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+
+  return Math.min(10, Math.max(0, number));
+}
+
+
+/* =========================================================
+   TIER
+========================================================= */
+
+function normalizeTier(value) {
+  const tier = String(value || "D")
+    .trim()
+    .toUpperCase();
+
+  return TIERS.includes(tier) ? tier : "D";
+}
+
+
+/* =========================================================
+   SUPABASE INIT
+========================================================= */
+
+function initSupabase() {
+  try {
+    if (!window.supabase) {
+      console.error("Supabase JS library was not loaded.");
+
+      showGlobalError(
+        "Supabase library gagal dimuat. Periksa koneksi internet."
+      );
+
+      return false;
+    }
+
+    if (
+      !SUPABASE_URL ||
+      SUPABASE_URL.includes("GANTI_DENGAN")
+    ) {
+      console.error("SUPABASE_URL has not been configured.");
+
+      showGlobalError(
+        "Supabase URL belum dikonfigurasi di script.js."
+      );
+
+      return false;
+    }
+
+    if (
+      !SUPABASE_ANON_KEY ||
+      SUPABASE_ANON_KEY.includes("GANTI_DENGAN")
+    ) {
+      console.error("SUPABASE_ANON_KEY has not been configured.");
+
+      showGlobalError(
+        "Supabase Anon Key belum dikonfigurasi di script.js."
+      );
+
+      return false;
+    }
+
+    supabaseClient = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY
+    );
+
+    console.log("Supabase initialized.");
+
+    return true;
+  } catch (error) {
+    console.error("Supabase initialization error:", error);
+
+    showGlobalError(
+      "Gagal menginisialisasi Supabase."
     );
 
     return false;
   }
-
-  return true;
 }
 
+
 /* =========================================================
-   LOAD DATA FROM SUPABASE
+   GLOBAL ERROR
 ========================================================= */
 
-async function loadData() {
-  if (!ensureSupabase()) {
-    avatars = [...DEFAULT_AVATARS];
+function showGlobalError(message) {
+  console.error(message);
+
+  const status = $("searchStatus");
+
+  if (status) {
+    status.textContent = message;
+    status.className =
+      "mt-3 min-h-5 text-xs text-red-500";
+  }
+}
+
+
+/* =========================================================
+   ADMIN SESSION
+========================================================= */
+
+function saveAdminSession() {
+  try {
+    localStorage.setItem(
+      ADMIN_SESSION_KEY,
+      JSON.stringify({
+        authenticated: true,
+        createdAt: Date.now()
+      })
+    );
+  } catch (error) {
+    console.error("Unable to save admin session:", error);
+  }
+}
+
+
+function getAdminSession() {
+  try {
+    const raw = localStorage.getItem(ADMIN_SESSION_KEY);
+
+    if (!raw) {
+      return false;
+    }
+
+    const session = JSON.parse(raw);
+
+    if (!session || session.authenticated !== true) {
+      localStorage.removeItem(ADMIN_SESSION_KEY);
+      return false;
+    }
+
+    const age = Date.now() - Number(session.createdAt || 0);
+
+    if (age > ADMIN_SESSION_MAX_AGE) {
+      localStorage.removeItem(ADMIN_SESSION_KEY);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Session error:", error);
+
+    localStorage.removeItem(ADMIN_SESSION_KEY);
+
+    return false;
+  }
+}
+
+
+function clearAdminSession() {
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+}
+
+
+/* =========================================================
+   MODAL UTILITIES
+========================================================= */
+
+function openModal(element) {
+  if (!element) return;
+
+  element.classList.remove("hidden");
+  element.classList.add("flex");
+
+  document.body.classList.add("overflow-hidden");
+}
+
+
+function closeModal(element) {
+  if (!element) return;
+
+  element.classList.add("hidden");
+  element.classList.remove("flex");
+
+  if (
+    $("adminPanel")?.classList.contains("hidden") &&
+    $("avatarModal")?.classList.contains("hidden") &&
+    $("adminLoginModal")?.classList.contains("hidden") &&
+    $("addAvatarModal")?.classList.contains("hidden")
+  ) {
+    document.body.classList.remove("overflow-hidden");
+  }
+}
+
+
+/* =========================================================
+   ADMIN PANEL
+========================================================= */
+
+function openAdminLogin() {
+  const modal = $("adminLoginModal");
+
+  if (!modal) {
+    console.error("adminLoginModal not found.");
     return;
   }
 
+  if (getAdminSession()) {
+    openAdminPanel();
+    return;
+  }
+
+  const password = $("adminPassword");
+  const error = $("adminError");
+
+  if (password) {
+    password.value = "";
+  }
+
+  if (error) {
+    error.textContent = "";
+  }
+
+  openModal(modal);
+
+  setTimeout(() => {
+    password?.focus();
+  }, 100);
+}
+
+
+function closeAdminLoginModal() {
+  closeModal($("adminLoginModal"));
+}
+
+
+function openAdminPanel() {
+  const panel = $("adminPanel");
+
+  if (!panel) {
+    console.error("adminPanel not found.");
+    return;
+  }
+
+  /*
+   * IMPORTANT:
+   * HTML menggunakan class "hidden".
+   * CSS custom kamu menggunakan "#adminPanel.flex".
+   *
+   * Jadi kita HARUS:
+   * remove hidden
+   * add flex
+   */
+
+  panel.classList.remove("hidden");
+  panel.classList.add("flex");
+
+  document.body.classList.add("overflow-hidden");
+
+  renderAdminPanel();
+}
+
+
+function closeAdminPanel() {
+  const panel = $("adminPanel");
+
+  if (!panel) return;
+
+  panel.classList.add("hidden");
+  panel.classList.remove("flex");
+
+  document.body.classList.remove("overflow-hidden");
+}
+
+
+function logoutAdmin() {
+  clearAdminSession();
+
+  closeAdminPanel();
+
+  showToast("Logged out successfully.");
+}
+
+
+/* =========================================================
+   ADMIN LOGIN
+========================================================= */
+
+async function loginAdmin() {
+  const passwordInput = $("adminPassword");
+  const errorElement = $("adminError");
+  const button = $("unlockAdmin");
+
+  if (!passwordInput) return;
+
+  const password = passwordInput.value;
+
+  if (!password) {
+    if (errorElement) {
+      errorElement.textContent =
+        "Password is required.";
+    }
+
+    passwordInput.focus();
+
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Checking...";
+  }
+
+  if (errorElement) {
+    errorElement.textContent = "";
+  }
+
   try {
-    const {
-      data,
-      error
-    } = await supabaseClient
-      .from("avatars")
+    const response = await fetch("/api/admin-login", {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+        password
+      })
+    });
+
+    let result = {};
+
+    try {
+      result = await response.json();
+    } catch {
+      result = {};
+    }
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.message || "Incorrect password."
+      );
+    }
+
+    saveAdminSession();
+
+    closeAdminLoginModal();
+
+    openAdminPanel();
+
+    showToast("Admin access granted.");
+  } catch (error) {
+    console.error("Admin login error:", error);
+
+    if (errorElement) {
+      errorElement.textContent =
+        error.message || "Login failed.";
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Unlock";
+    }
+  }
+}
+
+
+/* =========================================================
+   LOAD AVATARS
+========================================================= */
+
+async function loadAvatars() {
+  if (!supabaseClient) {
+    return;
+  }
+
+  if (isLoading) {
+    return;
+  }
+
+  isLoading = true;
+
+  try {
+    const { data, error } = await supabaseClient
+      .from(SUPABASE_TABLE)
       .select("*")
-      .order("created_at", {
-        ascending: false
+      .order("sort_order", {
+        ascending: true
       });
 
     if (error) {
-      console.error(
-        "Supabase load error:",
-        error
-      );
-
-      avatars = [];
-
-      return;
+      throw error;
     }
 
     avatars = Array.isArray(data)
       ? data.map(normalizeAvatar)
       : [];
 
-    console.log(
-      `Loaded ${avatars.length} avatars from Supabase.`
-    );
+    renderPublic();
+
+    if (getAdminSession()) {
+      renderAdminPanel();
+    }
   } catch (error) {
-    console.error(
-      "Failed to load avatar data:",
-      error
-    );
+    console.error("Load avatars error:", error);
 
     avatars = [];
+
+    renderPublic();
+
+    showGlobalError(
+      "Gagal mengambil data avatar dari Supabase."
+    );
+  } finally {
+    isLoading = false;
   }
 }
 
+
 /* =========================================================
-   STORAGE UPLOAD
+   NORMALIZE AVATAR
 ========================================================= */
 
-async function uploadAvatarImage(file, avatarId) {
-  if (!ensureSupabase()) {
-    throw new Error(
-      "Supabase belum terhubung."
-    );
-  }
-
-  if (!file) {
-    throw new Error(
-      "File gambar tidak ditemukan."
-    );
-  }
-
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-    throw new Error(
-      "Format gambar harus PNG, JPG/JPEG, atau WEBP."
-    );
-  }
-
-  if (file.size > MAX_IMAGE_SIZE) {
-    throw new Error(
-      "Ukuran gambar maksimal 5 MB."
-    );
-  }
-
-  const fileName = createStorageFileName(
-    file,
-    avatarId
-  );
-
-  const filePath = `avatars/${fileName}`;
-
-  const {
-    error
-  } = await supabaseClient.storage
-    .from(STORAGE_BUCKET)
-    .upload(
-      filePath,
-      file,
-      {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: file.type
-      }
-    );
-
-  if (error) {
-    console.error(
-      "Storage upload error:",
-      error
-    );
-
-    throw error;
-  }
-
-  const {
-    data
-  } = supabaseClient.storage
-    .from(STORAGE_BUCKET)
-    .getPublicUrl(filePath);
-
+function normalizeAvatar(avatar) {
   return {
-    url: data.publicUrl,
-    path: filePath
+    id: avatar.id || generateId(),
+
+    username:
+      avatar.username ||
+      "",
+
+    display_name:
+      avatar.display_name ||
+      "",
+
+    outfit_code:
+      avatar.outfit_code ||
+      "",
+
+    profile_url:
+      avatar.profile_url ||
+      "",
+
+    image_url:
+      avatar.image_url ||
+      "",
+
+    score:
+      normalizeScore(avatar.score),
+
+    tier:
+      normalizeTier(avatar.tier),
+
+    comment:
+      avatar.comment ||
+      "",
+
+    rated_at:
+      avatar.rated_at ||
+      avatar.created_at ||
+      new Date().toISOString(),
+
+    sort_order:
+      Number.isFinite(Number(avatar.sort_order))
+        ? Number(avatar.sort_order)
+        : 0,
+
+    created_at:
+      avatar.created_at ||
+      null,
+
+    updated_at:
+      avatar.updated_at ||
+      null
   };
 }
 
+
 /* =========================================================
-   DELETE STORAGE IMAGE
+   PUBLIC RENDER
 ========================================================= */
 
-async function deleteStorageImage(path) {
-  if (!path) return;
+function renderPublic() {
+  renderTierList();
+  updateStatistics();
+}
 
-  if (!ensureSupabase()) return;
+
+/* =========================================================
+   FILTER
+========================================================= */
+
+function getFilteredAvatars() {
+  let result = [...avatars];
+
+  if (currentFilter !== "ALL") {
+    result = result.filter(
+      avatar =>
+        normalizeTier(avatar.tier) === currentFilter
+    );
+  }
+
+  const search = currentSearch
+    .trim()
+    .toLowerCase();
+
+  if (search) {
+    result = result.filter(avatar => {
+      const username =
+        String(avatar.username || "")
+          .toLowerCase();
+
+      const displayName =
+        String(avatar.display_name || "")
+          .toLowerCase();
+
+      return (
+        username.includes(search) ||
+        displayName.includes(search)
+      );
+    });
+  }
+
+  return result;
+}
+
+
+/* =========================================================
+   TIER LIST
+========================================================= */
+
+function renderTierList() {
+  const container = $("tierContainer");
+  const emptyState = $("emptyState");
+
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  const filtered = getFilteredAvatars();
+
+  if (!filtered.length) {
+    if (emptyState) {
+      emptyState.classList.remove("hidden");
+    }
+
+    return;
+  }
+
+  if (emptyState) {
+    emptyState.classList.add("hidden");
+  }
+
+  const groups = {};
+
+  TIERS.forEach(tier => {
+    groups[tier] = [];
+  });
+
+  filtered.forEach(avatar => {
+    groups[normalizeTier(avatar.tier)].push(avatar);
+  });
+
+  TIERS.forEach(tier => {
+    const tierAvatars = groups[tier];
+
+    if (!tierAvatars.length) {
+      return;
+    }
+
+    container.appendChild(
+      createPublicTier(tier, tierAvatars)
+    );
+  });
+}
+
+
+/* =========================================================
+   PUBLIC TIER
+========================================================= */
+
+function createPublicTier(tier, tierAvatars) {
+  const section = document.createElement("section");
+
+  section.className =
+    "tier-card overflow-hidden rounded-2xl border border-pastel-200/70 bg-white/80 shadow-soft";
+
+  const colorClass =
+    getTierColorClass(tier);
+
+  section.innerHTML = `
+    <div class="flex items-center gap-4 border-b border-white/70 ${colorClass} px-4 py-3 sm:px-5">
+
+      <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/80 font-display text-lg font-bold text-ink-900 shadow-sm">
+        ${escapeHtml(tier)}
+      </div>
+
+      <div class="min-w-0">
+        <div class="font-display text-sm font-bold text-ink-900">
+          ${escapeHtml(getTierName(tier))}
+        </div>
+
+        <div class="text-[9px] font-bold uppercase tracking-widest text-ink-500">
+          ${tierAvatars.length} avatar${tierAvatars.length !== 1 ? "s" : ""}
+        </div>
+      </div>
+
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      ${tierAvatars
+        .map(createPublicAvatarCard)
+        .join("")}
+    </div>
+  `;
+
+  return section;
+}
+
+
+/* =========================================================
+   PUBLIC AVATAR CARD
+========================================================= */
+
+function createPublicAvatarCard(avatar) {
+  const image =
+    avatar.image_url ||
+    createPlaceholderAvatar();
+
+  return `
+    <button
+      type="button"
+      class="avatar-card group overflow-hidden rounded-2xl border border-pastel-200/70 bg-white text-left shadow-sm"
+      data-avatar-id="${escapeHtml(avatar.id)}"
+    >
+
+      <div class="relative aspect-square overflow-hidden bg-pastel-100">
+
+        <img
+          src="${escapeHtml(image)}"
+          alt="${escapeHtml(avatar.username)}"
+          loading="lazy"
+          class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          onerror="this.src='${createPlaceholderAvatar()}'"
+        >
+
+        <div class="absolute left-2 top-2 grid h-8 w-8 place-items-center rounded-lg bg-white/90 font-display text-xs font-bold text-ink-900 shadow-sm backdrop-blur">
+          ${escapeHtml(avatar.tier)}
+        </div>
+
+        <div class="absolute bottom-2 right-2 rounded-lg bg-ink-900/90 px-2 py-1 text-[9px] font-bold text-white">
+          ${escapeHtml(avatar.score)}
+        </div>
+
+      </div>
+
+      <div class="p-3">
+
+        <div class="truncate text-xs font-bold text-ink-900">
+          @${escapeHtml(
+            String(avatar.username).replace(/^@/, "")
+          )}
+        </div>
+
+        <div class="mt-1 truncate text-[9px] text-ink-400">
+          ${escapeHtml(avatar.display_name || "Roblox Avatar")}
+        </div>
+
+      </div>
+
+    </button>
+  `;
+}
+
+
+/* =========================================================
+   PLACEHOLDER
+========================================================= */
+
+function createPlaceholderAvatar() {
+  return (
+    "data:image/svg+xml;charset=UTF-8," +
+    encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">
+        <rect width="100%" height="100%" fill="#EDF8FC"/>
+        <text
+          x="50%"
+          y="50%"
+          dominant-baseline="middle"
+          text-anchor="middle"
+          font-family="Arial"
+          font-size="100"
+          font-weight="700"
+          fill="#559AAF"
+        >R</text>
+      </svg>
+    `)
+  );
+}
+
+
+/* =========================================================
+   TIER HELPERS
+========================================================= */
+
+function getTierName(tier) {
+  const names = {
+    S: "Exceptional",
+    A: "Very Good",
+    B: "Good",
+    C: "Average",
+    D: "Needs Improvement"
+  };
+
+  return names[tier] || tier;
+}
+
+
+function getTierColorClass(tier) {
+  const classes = {
+    S: "tier-s-bg",
+    A: "tier-a-bg",
+    B: "tier-b-bg",
+    C: "tier-c-bg",
+    D: "tier-d-bg"
+  };
+
+  return classes[tier] || classes.D;
+}
+
+
+/* =========================================================
+   STATISTICS
+========================================================= */
+
+function updateStatistics() {
+  const total = avatars.length;
+
+  const s = avatars.filter(
+    avatar => normalizeTier(avatar.tier) === "S"
+  ).length;
+
+  const a = avatars.filter(
+    avatar => normalizeTier(avatar.tier) === "A"
+  ).length;
+
+  const other = total - s - a;
+
+  setText("heroAvatarCount", total);
+  setText("totalAvatars", total);
+  setText("sCount", s);
+  setText("aCount", a);
+  setText("otherCount", other);
+}
+
+
+function setText(id, value) {
+  const element = $(id);
+
+  if (element) {
+    element.textContent = String(value);
+  }
+}
+
+
+/* =========================================================
+   AVATAR DETAIL MODAL
+========================================================= */
+
+function openAvatarModal(id) {
+  const avatar = avatars.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!avatar) return;
+
+  setText(
+    "modalUsername",
+    "@" +
+      String(avatar.username || "")
+        .replace(/^@/, "")
+  );
+
+  setText(
+    "modalDisplayName",
+    avatar.display_name || ""
+  );
+
+  setText(
+    "modalScore",
+    avatar.score
+  );
+
+  setText(
+    "modalTier",
+    `${avatar.tier} — ${getTierName(avatar.tier)}`
+  );
+
+  setText(
+    "modalTierBadge",
+    avatar.tier
+  );
+
+  setText(
+    "modalOutfit",
+    avatar.outfit_code || "-"
+  );
+
+  setText(
+    "modalDate",
+    formatDate(avatar.rated_at)
+  );
+
+  setText(
+    "modalComment",
+    avatar.comment || "No comment."
+  );
+
+  const image = $("modalAvatarImage");
+
+  if (image) {
+    image.src =
+      avatar.image_url ||
+      createPlaceholderAvatar();
+
+    image.alt =
+      `Roblox Avatar ${avatar.username}`;
+  }
+
+  const profile = $("modalProfile");
+
+  if (profile) {
+    profile.href =
+      avatar.profile_url ||
+      buildRobloxProfileUrl(
+        avatar.username
+      );
+  }
+
+  const copyButton = $("copyOutfit");
+
+  if (copyButton) {
+    copyButton.dataset.outfit =
+      avatar.outfit_code || "";
+  }
+
+  openModal($("avatarModal"));
+}
+
+
+function buildRobloxProfileUrl(username) {
+  const cleanUsername =
+    String(username || "")
+      .replace(/^@/, "")
+      .trim();
+
+  if (!cleanUsername) {
+    return "#";
+  }
+
+  return (
+    "https://www.roblox.com/search/users?keyword=" +
+    encodeURIComponent(cleanUsername)
+  );
+}
+
+
+function closeAvatarModal() {
+  closeModal($("avatarModal"));
+}
+
+
+/* =========================================================
+   COPY OUTFIT
+========================================================= */
+
+async function copyOutfit() {
+  const button = $("copyOutfit");
+
+  if (!button) return;
+
+  const outfit = button.dataset.outfit || "";
+
+  if (!outfit) {
+    showToast("No outfit code available.");
+    return;
+  }
 
   try {
-    const {
-      error
-    } = await supabaseClient.storage
-      .from(STORAGE_BUCKET)
-      .remove([path]);
+    await navigator.clipboard.writeText(
+      String(outfit)
+    );
+
+    button.textContent = "Copied!";
+
+    setTimeout(() => {
+      button.textContent = "Copy";
+    }, 1200);
+  } catch (error) {
+    console.error("Copy error:", error);
+
+    showToast("Unable to copy outfit code.");
+  }
+}
+
+
+/* =========================================================
+   ADMIN PANEL RENDER
+========================================================= */
+
+function renderAdminPanel() {
+  const container = $("adminTierContainer");
+
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  TIERS.forEach(tier => {
+    const tierAvatars =
+      avatars
+        .filter(
+          avatar =>
+            normalizeTier(avatar.tier) === tier
+        )
+        .sort(
+          (a, b) =>
+            Number(a.sort_order || 0) -
+            Number(b.sort_order || 0)
+        );
+
+    container.appendChild(
+      createAdminTier(tier, tierAvatars)
+    );
+  });
+}
+
+
+/* =========================================================
+   ADMIN TIER
+========================================================= */
+
+function createAdminTier(tier, tierAvatars) {
+  const section = document.createElement("section");
+
+  section.className =
+    "overflow-hidden rounded-2xl border border-pastel-200/70 bg-white shadow-soft";
+
+  section.dataset.tier = tier;
+
+  section.innerHTML = `
+    <div class="flex items-center justify-between gap-3 ${getTierColorClass(tier)} px-4 py-3 sm:px-5">
+
+      <div class="flex min-w-0 items-center gap-3">
+
+        <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/85 font-display text-lg font-bold text-ink-900 shadow-sm">
+          ${escapeHtml(tier)}
+        </div>
+
+        <div class="min-w-0">
+
+          <div class="font-display text-sm font-bold text-ink-900">
+            ${escapeHtml(getTierName(tier))}
+          </div>
+
+          <div class="text-[9px] font-bold uppercase tracking-widest text-ink-500">
+            ${tierAvatars.length} avatar${tierAvatars.length !== 1 ? "s" : ""}
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="hidden text-[9px] font-bold uppercase tracking-widest text-ink-400 sm:block">
+        Drag avatars here
+      </div>
+
+    </div>
+
+    <div
+      class="admin-tier-dropzone grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3"
+      data-tier="${escapeHtml(tier)}"
+    >
+
+      ${
+        tierAvatars.length
+          ? tierAvatars
+              .map(createAdminAvatarCard)
+              .join("")
+          : `
+            <div
+              class="admin-drop-hint col-span-full flex min-h-[100px] items-center justify-center rounded-2xl border-2 border-dashed border-pastel-200 bg-pastel-50 px-5 text-center text-[10px] font-semibold text-ink-400"
+              data-empty-tier="${escapeHtml(tier)}"
+            >
+              Drop avatars here
+            </div>
+          `
+      }
+
+    </div>
+  `;
+
+  return section;
+}
+
+
+/* =========================================================
+   ADMIN AVATAR CARD
+========================================================= */
+
+function createAdminAvatarCard(avatar) {
+  const image =
+    avatar.image_url ||
+    createPlaceholderAvatar();
+
+  return `
+    <article
+      class="admin-avatar-card group flex min-w-0 cursor-grab items-center gap-3 rounded-2xl border border-pastel-200/70 bg-white p-3 shadow-sm transition hover:shadow-card"
+      draggable="true"
+      data-avatar-id="${escapeHtml(avatar.id)}"
+    >
+
+      <img
+        src="${escapeHtml(image)}"
+        alt="${escapeHtml(avatar.username)}"
+        class="admin-avatar-image h-16 w-16 shrink-0 rounded-xl bg-pastel-100 object-cover"
+        onerror="this.src='${createPlaceholderAvatar()}'"
+      >
+
+      <div class="min-w-0 flex-1">
+
+        <div class="truncate text-xs font-bold text-ink-900">
+          @${escapeHtml(
+            String(avatar.username).replace(/^@/, "")
+          )}
+        </div>
+
+        <div class="mt-1 truncate text-[9px] text-ink-400">
+          ${escapeHtml(avatar.display_name || "-")}
+        </div>
+
+        <div class="mt-2 flex items-center gap-2">
+
+          <span class="rounded-lg bg-pastel-100 px-2 py-1 text-[9px] font-bold text-pastel-800">
+            ${escapeHtml(avatar.tier)}
+          </span>
+
+          <span class="text-[9px] font-bold text-ink-500">
+            ${escapeHtml(avatar.score)}/10
+          </span>
+
+        </div>
+
+      </div>
+
+      <div class="admin-avatar-actions flex shrink-0 flex-col gap-1">
+
+        <button
+          type="button"
+          class="edit-avatar-button grid h-8 w-8 place-items-center rounded-lg bg-pastel-50 text-xs text-ink-500 transition hover:bg-pastel-100"
+          data-avatar-id="${escapeHtml(avatar.id)}"
+          title="Edit"
+        >
+          ✎
+        </button>
+
+        <button
+          type="button"
+          class="delete-avatar-button grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-xs text-red-500 transition hover:bg-red-100"
+          data-avatar-id="${escapeHtml(avatar.id)}"
+          title="Delete"
+        >
+          ×
+        </button>
+
+      </div>
+
+    </article>
+  `;
+}
+
+
+/* =========================================================
+   ADD / EDIT MODAL
+========================================================= */
+
+function openAddAvatarModal() {
+  editingAvatarId = null;
+
+  resetAvatarForm();
+
+  const title =
+    query("#addAvatarModal h2");
+
+  const description =
+    query("#addAvatarModal p");
+
+  if (title) {
+    title.textContent = "Add Avatar";
+  }
+
+  if (description) {
+    description.textContent =
+      "Fill in the viewer's Roblox information.";
+  }
+
+  const saveButton = $("saveAvatar");
+
+  if (saveButton) {
+    saveButton.textContent =
+      "Save Avatar";
+  }
+
+  openModal($("addAvatarModal"));
+}
+
+
+function openEditAvatarModal(id) {
+  const avatar = avatars.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!avatar) return;
+
+  editingAvatarId = avatar.id;
+
+  resetImageState();
+
+  setInputValue(
+    "avatarUsername",
+    avatar.username
+  );
+
+  setInputValue(
+    "avatarDisplayName",
+    avatar.display_name
+  );
+
+  setInputValue(
+    "avatarOutfitCode",
+    avatar.outfit_code
+  );
+
+  setInputValue(
+    "avatarProfileUrl",
+    avatar.profile_url
+  );
+
+  setInputValue(
+    "avatarScore",
+    avatar.score
+  );
+
+  setInputValue(
+    "avatarTier",
+    avatar.tier
+  );
+
+  setInputValue(
+    "avatarComment",
+    avatar.comment
+  );
+
+  if (avatar.image_url) {
+    showExistingImage(
+      avatar.image_url,
+      "Current avatar image"
+    );
+  }
+
+  const title =
+    query("#addAvatarModal h2");
+
+  const description =
+    query("#addAvatarModal p");
+
+  if (title) {
+    title.textContent = "Edit Avatar";
+  }
+
+  if (description) {
+    description.textContent =
+      "Update this avatar's information.";
+  }
+
+  const saveButton = $("saveAvatar");
+
+  if (saveButton) {
+    saveButton.textContent =
+      "Save Changes";
+  }
+
+  openModal($("addAvatarModal"));
+}
+
+
+function closeAddAvatarModal() {
+  closeModal($("addAvatarModal"));
+
+  editingAvatarId = null;
+
+  resetImageState();
+}
+
+
+/* =========================================================
+   FORM
+========================================================= */
+
+function setInputValue(id, value) {
+  const element = $(id);
+
+  if (element) {
+    element.value = value ?? "";
+  }
+}
+
+
+function getInputValue(id) {
+  const element = $(id);
+
+  return element
+    ? element.value.trim()
+    : "";
+}
+
+
+function resetAvatarForm() {
+  setInputValue(
+    "avatarUsername",
+    ""
+  );
+
+  setInputValue(
+    "avatarDisplayName",
+    ""
+  );
+
+  setInputValue(
+    "avatarOutfitCode",
+    ""
+  );
+
+  setInputValue(
+    "avatarProfileUrl",
+    ""
+  );
+
+  setInputValue(
+    "avatarScore",
+    ""
+  );
+
+  setInputValue(
+    "avatarTier",
+    "S"
+  );
+
+  setInputValue(
+    "avatarComment",
+    ""
+  );
+
+  resetImageState();
+}
+
+
+/* =========================================================
+   IMAGE STATE
+========================================================= */
+
+function resetImageState() {
+  selectedImageFile = null;
+
+  if (selectedImagePreviewUrl) {
+    URL.revokeObjectURL(
+      selectedImagePreviewUrl
+    );
+
+    selectedImagePreviewUrl = null;
+  }
+
+  const input =
+    $("avatarImageInput");
+
+  if (input) {
+    input.value = "";
+  }
+
+  const placeholder =
+    $("uploadPlaceholder");
+
+  const previewContainer =
+    $("imagePreviewContainer");
+
+  if (placeholder) {
+    placeholder.classList.remove("hidden");
+  }
+
+  if (previewContainer) {
+    previewContainer.classList.add("hidden");
+  }
+
+  const preview =
+    $("imagePreview");
+
+  if (preview) {
+    preview.src = "";
+  }
+
+  setText(
+    "imageFileName",
+    ""
+  );
+}
+
+
+function showExistingImage(
+  url,
+  filename = "Current image"
+) {
+  const placeholder =
+    $("uploadPlaceholder");
+
+  const previewContainer =
+    $("imagePreviewContainer");
+
+  const preview =
+    $("imagePreview");
+
+  if (placeholder) {
+    placeholder.classList.add("hidden");
+  }
+
+  if (previewContainer) {
+    previewContainer.classList.remove("hidden");
+  }
+
+  if (preview) {
+    preview.src = url;
+  }
+
+  setText(
+    "imageFileName",
+    filename
+  );
+}
+
+
+function handleImageFile(file) {
+  if (!file) return;
+
+  const allowedTypes = [
+    "image/png",
+    "image/jpeg",
+    "image/webp"
+  ];
+
+  if (!allowedTypes.includes(file.type)) {
+    showToast(
+      "Only PNG, JPG, and WebP images are allowed."
+    );
+
+    return;
+  }
+
+  const maxSize =
+    10 * 1024 * 1024;
+
+  if (file.size > maxSize) {
+    showToast(
+      "Maximum image size is 10 MB."
+    );
+
+    return;
+  }
+
+  selectedImageFile = file;
+
+  if (selectedImagePreviewUrl) {
+    URL.revokeObjectURL(
+      selectedImagePreviewUrl
+    );
+  }
+
+  selectedImagePreviewUrl =
+    URL.createObjectURL(file);
+
+  const placeholder =
+    $("uploadPlaceholder");
+
+  const previewContainer =
+    $("imagePreviewContainer");
+
+  const preview =
+    $("imagePreview");
+
+  if (placeholder) {
+    placeholder.classList.add("hidden");
+  }
+
+  if (previewContainer) {
+    previewContainer.classList.remove("hidden");
+  }
+
+  if (preview) {
+    preview.src =
+      selectedImagePreviewUrl;
+  }
+
+  setText(
+    "imageFileName",
+    file.name
+  );
+}
+
+
+/* =========================================================
+   STORAGE
+========================================================= */
+
+function createStoragePath(file, avatarId) {
+  const extension =
+    getFileExtension(file.name);
+
+  return (
+    `${avatarId}/avatar-${Date.now()}.${extension}`
+  );
+}
+
+
+function getFileExtension(filename) {
+  const clean =
+    String(filename || "")
+      .split("?")[0]
+      .split("#")[0];
+
+  const parts =
+    clean.split(".");
+
+  if (parts.length < 2) {
+    return "jpg";
+  }
+
+  const extension =
+    parts.pop()
+      .toLowerCase();
+
+  const allowed = [
+    "jpg",
+    "jpeg",
+    "png",
+    "webp"
+  ];
+
+  return allowed.includes(extension)
+    ? extension
+    : "jpg";
+}
+
+
+async function uploadAvatarImage(file, avatarId) {
+  if (!supabaseClient) {
+    throw new Error(
+      "Supabase is not initialized."
+    );
+  }
+
+  const path =
+    createStoragePath(
+      file,
+      avatarId
+    );
+
+  const { error } =
+    await supabaseClient
+      .storage
+      .from(SUPABASE_BUCKET)
+      .upload(
+        path,
+        file,
+        {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type
+        }
+      );
+
+  if (error) {
+    throw error;
+  }
+
+  const { data } =
+    supabaseClient
+      .storage
+      .from(SUPABASE_BUCKET)
+      .getPublicUrl(path);
+
+  return {
+    url: data.publicUrl,
+    path
+  };
+}
+
+
+async function deleteStorageFile(path) {
+  if (!path || !supabaseClient) {
+    return;
+  }
+
+  try {
+    const { error } =
+      await supabaseClient
+        .storage
+        .from(SUPABASE_BUCKET)
+        .remove([path]);
 
     if (error) {
       console.warn(
@@ -380,156 +1692,1477 @@ async function deleteStorageImage(path) {
     }
   } catch (error) {
     console.warn(
-      "Storage delete failed:",
+      "Storage delete error:",
       error
     );
   }
 }
 
-/* =========================================================
-   ADMIN SESSION
-========================================================= */
 
-function getAdminSession() {
+function extractStoragePathFromUrl(url) {
+  if (!url) return null;
+
   try {
-    const raw =
-      sessionStorage.getItem(
-        ADMIN_SESSION_KEY
-      );
+    const marker =
+      `/storage/v1/object/public/${SUPABASE_BUCKET}/`;
 
-    if (!raw) return null;
+    const index =
+      url.indexOf(marker);
 
-    const session = JSON.parse(raw);
-
-    if (
-      !session?.authenticated ||
-      Date.now() -
-        Number(session.createdAt) >
-        ADMIN_SESSION_MAX_AGE
-    ) {
-      sessionStorage.removeItem(
-        ADMIN_SESSION_KEY
-      );
-
+    if (index === -1) {
       return null;
     }
 
-    return session;
-  } catch {
-    sessionStorage.removeItem(
-      ADMIN_SESSION_KEY
+    return decodeURIComponent(
+      url.substring(
+        index + marker.length
+      )
     );
-
+  } catch {
     return null;
   }
 }
 
-function isAdminLoggedIn() {
-  return Boolean(
-    getAdminSession()
-  );
-}
 
-function setAdminSession(authenticated) {
-  if (!authenticated) {
-    sessionStorage.removeItem(
-      ADMIN_SESSION_KEY
+/* =========================================================
+   SAVE AVATAR
+========================================================= */
+
+async function saveAvatar() {
+  if (isSaving) return;
+
+  if (!supabaseClient) {
+    showToast(
+      "Supabase belum terhubung."
     );
 
     return;
   }
 
-  sessionStorage.setItem(
-    ADMIN_SESSION_KEY,
-    JSON.stringify({
-      authenticated: true,
-      createdAt: Date.now()
-    })
+  const username =
+    getInputValue("avatarUsername");
+
+  const displayName =
+    getInputValue("avatarDisplayName");
+
+  const outfitCode =
+    getInputValue("avatarOutfitCode");
+
+  const profileUrl =
+    getInputValue("avatarProfileUrl");
+
+  const score =
+    normalizeScore(
+      getInputValue("avatarScore")
+    );
+
+  const tier =
+    normalizeTier(
+      getInputValue("avatarTier")
+    );
+
+  const comment =
+    getInputValue("avatarComment");
+
+  if (!username) {
+    showToast(
+      "Roblox username is required."
+    );
+
+    $("avatarUsername")?.focus();
+
+    return;
+  }
+
+  if (!outfitCode) {
+    showToast(
+      "Outfit code is required."
+    );
+
+    $("avatarOutfitCode")?.focus();
+
+    return;
+  }
+
+  if (!editingAvatarId && !selectedImageFile) {
+    showToast(
+      "Avatar screenshot is required."
+    );
+
+    return;
+  }
+
+  const button =
+    $("saveAvatar");
+
+  isSaving = true;
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving...";
+  }
+
+  try {
+    let avatarId =
+      editingAvatarId ||
+      generateId();
+
+    let existingAvatar = null;
+
+    if (editingAvatarId) {
+      existingAvatar =
+        avatars.find(
+          avatar =>
+            String(avatar.id) ===
+            String(editingAvatarId)
+        );
+    }
+
+    let imageUrl =
+      existingAvatar?.image_url ||
+      "";
+
+    let oldStoragePath = null;
+
+    if (
+      selectedImageFile
+    ) {
+      if (existingAvatar?.image_url) {
+        oldStoragePath =
+          extractStoragePathFromUrl(
+            existingAvatar.image_url
+          );
+      }
+
+      const uploaded =
+        await uploadAvatarImage(
+          selectedImageFile,
+          avatarId
+        );
+
+      imageUrl =
+        uploaded.url;
+    }
+
+    const payload = {
+      id: avatarId,
+
+      username:
+        username.replace(/^@/, ""),
+
+      display_name:
+        displayName,
+
+      outfit_code:
+        outfitCode,
+
+      profile_url:
+        profileUrl ||
+        buildRobloxProfileUrl(username),
+
+      image_url:
+        imageUrl,
+
+      score,
+
+      tier,
+
+      comment,
+
+      rated_at:
+        existingAvatar?.rated_at ||
+        new Date().toISOString(),
+
+      sort_order:
+        existingAvatar?.sort_order ??
+        getNextSortOrder(tier),
+
+      updated_at:
+        new Date().toISOString()
+    };
+
+    if (!existingAvatar) {
+      payload.created_at =
+        new Date().toISOString();
+    }
+
+    const { data, error } =
+      await supabaseClient
+        .from(SUPABASE_TABLE)
+        .upsert(
+          payload,
+          {
+            onConflict: "id"
+          }
+        )
+        .select()
+        .single();
+
+    if (error) {
+      throw error;
+    }
+
+    /*
+     * Delete old image ONLY after
+     * database save succeeded.
+     */
+    if (
+      selectedImageFile &&
+      oldStoragePath
+    ) {
+      await deleteStorageFile(
+        oldStoragePath
+      );
+    }
+
+    const normalized =
+      normalizeAvatar(data);
+
+    const existingIndex =
+      avatars.findIndex(
+        avatar =>
+          String(avatar.id) ===
+          String(normalized.id)
+      );
+
+    if (existingIndex >= 0) {
+      avatars[existingIndex] =
+        normalized;
+    } else {
+      avatars.push(normalized);
+    }
+
+    await normalizeTierOrder();
+
+    renderPublic();
+
+    if (getAdminSession()) {
+      renderAdminPanel();
+    }
+
+    closeAddAvatarModal();
+
+    showToast(
+      existingAvatar
+        ? "Avatar updated successfully."
+        : "Avatar added successfully."
+    );
+  } catch (error) {
+    console.error(
+      "Save avatar error:",
+      error
+    );
+
+    showToast(
+      error.message ||
+      "Failed to save avatar."
+    );
+  } finally {
+    isSaving = false;
+
+    if (button) {
+      button.disabled = false;
+
+      button.textContent =
+        editingAvatarId
+          ? "Save Changes"
+          : "Save Avatar";
+    }
+  }
+}
+
+
+/* =========================================================
+   NEXT SORT ORDER
+========================================================= */
+
+function getNextSortOrder(tier) {
+  const tierAvatars =
+    avatars.filter(
+      avatar =>
+        normalizeTier(avatar.tier) ===
+        tier
+    );
+
+  if (!tierAvatars.length) {
+    return 0;
+  }
+
+  return (
+    Math.max(
+      ...tierAvatars.map(
+        avatar =>
+          Number(avatar.sort_order || 0)
+      )
+    ) + 1
   );
 }
 
+
 /* =========================================================
-   INITIALIZATION
+   DELETE AVATAR
 ========================================================= */
 
-document.addEventListener(
-  "DOMContentLoaded",
-  async () => {
-    await loadData();
+async function deleteAvatar(id) {
+  if (!supabaseClient) {
+    showToast(
+      "Supabase belum terhubung."
+    );
 
-    initializeAdmin();
-
-    initializeSearch();
-
-    initializeFilters();
-
-    initializeAvatarModal();
-
-    initializeAdminLogin();
-
-    initializeAddAvatarModal();
-
-    initializeImportExport();
-
-    renderPublicTierList();
-
-    renderAdminTierList();
-
-    updateStatistics();
-
-    updateSearchStatus();
+    return;
   }
-);
+
+  const avatar =
+    avatars.find(
+      item =>
+        String(item.id) ===
+        String(id)
+    );
+
+  if (!avatar) return;
+
+  const username =
+    avatar.username
+      ? `@${String(avatar.username).replace(/^@/, "")}`
+      : "this avatar";
+
+  const confirmed =
+    window.confirm(
+      `Delete ${username}?\n\nThis action cannot be undone.`
+    );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const { error } =
+      await supabaseClient
+        .from(SUPABASE_TABLE)
+        .delete()
+        .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    const storagePath =
+      extractStoragePathFromUrl(
+        avatar.image_url
+      );
+
+    if (storagePath) {
+      await deleteStorageFile(
+        storagePath
+      );
+    }
+
+    avatars =
+      avatars.filter(
+        item =>
+          String(item.id) !==
+          String(id)
+      );
+
+    await normalizeTierOrder();
+
+    renderPublic();
+
+    if (getAdminSession()) {
+      renderAdminPanel();
+    }
+
+    showToast(
+      "Avatar deleted successfully."
+    );
+  } catch (error) {
+    console.error(
+      "Delete avatar error:",
+      error
+    );
+
+    showToast(
+      error.message ||
+      "Failed to delete avatar."
+    );
+  }
+}
+
 
 /* =========================================================
-   ADMIN
+   DRAG & DROP
 ========================================================= */
 
-function initializeAdmin() {
-  $("adminButton")?.addEventListener(
-    "click",
-    () => {
-      if (isAdminLoggedIn()) {
-        openAdminPanel();
-      } else {
-        openAdminLogin();
+function setupDragAndDrop() {
+  const container =
+    $("adminTierContainer");
+
+  if (!container) return;
+
+  container.addEventListener(
+    "dragstart",
+    event => {
+      const card =
+        event.target.closest(
+          ".admin-avatar-card"
+        );
+
+      if (!card) return;
+
+      draggedAvatarId =
+        card.dataset.avatarId;
+
+      draggedElement = card;
+
+      card.classList.add(
+        "dragging"
+      );
+
+      if (
+        event.dataTransfer
+      ) {
+        event.dataTransfer.effectAllowed =
+          "move";
+
+        event.dataTransfer.setData(
+          "text/plain",
+          draggedAvatarId
+        );
       }
     }
   );
 
-  $("logoutAdmin")?.addEventListener(
-    "click",
+  container.addEventListener(
+    "dragend",
     () => {
-      if (
-        !confirm(
-          "Logout dari Admin Dashboard?"
-        )
-      ) {
-        return;
+      if (draggedElement) {
+        draggedElement.classList.remove(
+          "dragging"
+        );
       }
 
-      setAdminSession(false);
+      draggedAvatarId = null;
+      draggedElement = null;
 
-      hideAdminPanel();
+      queryAll(
+        ".drop-active",
+        container
+      ).forEach(element => {
+        element.classList.remove(
+          "drop-active"
+        );
+      });
+    }
+  );
 
-      alert(
-        "Berhasil logout."
+  container.addEventListener(
+    "dragover",
+    event => {
+      event.preventDefault();
+
+      const zone =
+        event.target.closest(
+          ".admin-tier-dropzone"
+        );
+
+      if (!zone) return;
+
+      zone.classList.add(
+        "drop-active"
+      );
+
+      if (
+        event.dataTransfer
+      ) {
+        event.dataTransfer.dropEffect =
+          "move";
+      }
+    }
+  );
+
+  container.addEventListener(
+    "dragleave",
+    event => {
+      const zone =
+        event.target.closest(
+          ".admin-tier-dropzone"
+        );
+
+      if (!zone) return;
+
+      /*
+       * Only remove when actually leaving
+       * the zone.
+       */
+      if (
+        !zone.contains(
+          event.relatedTarget
+        )
+      ) {
+        zone.classList.remove(
+          "drop-active"
+        );
+      }
+    }
+  );
+
+  container.addEventListener(
+    "drop",
+    async event => {
+      event.preventDefault();
+
+      const zone =
+        event.target.closest(
+          ".admin-tier-dropzone"
+        );
+
+      if (!zone) return;
+
+      zone.classList.remove(
+        "drop-active"
+      );
+
+      const avatarId =
+        draggedAvatarId ||
+        event.dataTransfer?.getData(
+          "text/plain"
+        );
+
+      if (!avatarId) return;
+
+      const targetTier =
+        normalizeTier(
+          zone.dataset.tier
+        );
+
+      await moveAvatarToTier(
+        avatarId,
+        targetTier,
+        zone,
+        event.target
       );
     }
   );
 }
 
+
 /* =========================================================
-   LOGIN
+   MOVE AVATAR
 ========================================================= */
 
-function initializeAdminLogin() {
-  $("closeAdminLogin")?.addEventListener(
+async function moveAvatarToTier(
+  avatarId,
+  targetTier,
+  zone,
+  target
+) {
+  const avatar =
+    avatars.find(
+      item =>
+        String(item.id) ===
+        String(avatarId)
+    );
+
+  if (!avatar) return;
+
+  const oldTier =
+    normalizeTier(avatar.tier);
+
+  /*
+   * Determine insertion index.
+   */
+  const cards =
+    queryAll(
+      ".admin-avatar-card",
+      zone
+    );
+
+  let insertIndex =
+    cards.length;
+
+  const hoveredCard =
+    target.closest?.(
+      ".admin-avatar-card"
+    );
+
+  if (
+    hoveredCard &&
+    String(
+      hoveredCard.dataset.avatarId
+    ) !== String(avatarId)
+  ) {
+    insertIndex =
+      cards.indexOf(
+        hoveredCard
+      );
+
+    if (insertIndex < 0) {
+      insertIndex =
+        cards.length;
+    }
+  }
+
+  avatar.tier =
+    targetTier;
+
+  /*
+   * Optimistic local rendering.
+   */
+  rebuildSortOrders();
+
+  /*
+   * Adjust target order.
+   */
+  const targetAvatars =
+    avatars
+      .filter(
+        item =>
+          normalizeTier(item.tier) ===
+          targetTier
+      )
+      .sort(
+        (a, b) =>
+          Number(a.sort_order || 0) -
+          Number(b.sort_order || 0)
+      );
+
+  const movedIndex =
+    targetAvatars.findIndex(
+      item =>
+        String(item.id) ===
+        String(avatarId)
+    );
+
+  if (
+    movedIndex >= 0 &&
+    insertIndex !== movedIndex
+  ) {
+    const [moved] =
+      targetAvatars.splice(
+        movedIndex,
+        1
+      );
+
+    targetAvatars.splice(
+      Math.min(
+        insertIndex,
+        targetAvatars.length
+      ),
+      0,
+      moved
+    );
+
+    targetAvatars.forEach(
+      (item, index) => {
+        item.sort_order =
+          index;
+      }
+    );
+  }
+
+  /*
+   * If moved between tiers,
+   * normalize both tiers.
+   */
+  if (oldTier !== targetTier) {
+    normalizeLocalTierOrder(
+      oldTier
+    );
+
+    normalizeLocalTierOrder(
+      targetTier
+    );
+  }
+
+  renderAdminPanel();
+
+  try {
+    await saveAllSortOrders();
+
+    renderPublic();
+
+    showToast(
+      oldTier === targetTier
+        ? "Avatar order updated."
+        : `Avatar moved to ${targetTier} tier.`
+    );
+  } catch (error) {
+    console.error(
+      "Drag/drop save error:",
+      error
+    );
+
+    await loadAvatars();
+
+    showToast(
+      "Failed to save new tier order."
+    );
+  }
+}
+
+
+/* =========================================================
+   LOCAL ORDER
+========================================================= */
+
+function normalizeLocalTierOrder(
+  tier
+) {
+  const list =
+    avatars
+      .filter(
+        avatar =>
+          normalizeTier(avatar.tier) ===
+          tier
+      )
+      .sort(
+        (a, b) =>
+          Number(a.sort_order || 0) -
+          Number(b.sort_order || 0)
+      );
+
+  list.forEach(
+    (avatar, index) => {
+      avatar.sort_order =
+        index;
+    }
+  );
+}
+
+
+function rebuildSortOrders() {
+  TIERS.forEach(
+    normalizeLocalTierOrder
+  );
+}
+
+
+/* =========================================================
+   SAVE SORT ORDERS
+========================================================= */
+
+async function saveAllSortOrders() {
+  if (!supabaseClient) {
+    throw new Error(
+      "Supabase is not initialized."
+    );
+  }
+
+  rebuildSortOrders();
+
+  const updates =
+    avatars.map(
+      avatar => ({
+        id: avatar.id,
+        tier: normalizeTier(
+          avatar.tier
+        ),
+        sort_order:
+          Number(
+            avatar.sort_order || 0
+          ),
+        updated_at:
+          new Date().toISOString()
+      })
+    );
+
+  if (!updates.length) {
+    return;
+  }
+
+  const { error } =
+    await supabaseClient
+      .from(SUPABASE_TABLE)
+      .upsert(
+        updates,
+        {
+          onConflict: "id"
+        }
+      );
+
+  if (error) {
+    throw error;
+  }
+}
+
+
+/* =========================================================
+   NORMALIZE DATABASE ORDER
+========================================================= */
+
+async function normalizeTierOrder() {
+  rebuildSortOrders();
+
+  if (!avatars.length) {
+    return;
+  }
+
+  try {
+    await saveAllSortOrders();
+  } catch (error) {
+    console.warn(
+      "Unable to normalize tier order:",
+      error
+    );
+  }
+}
+
+
+/* =========================================================
+   SEARCH
+========================================================= */
+
+function setupSearch() {
+  const input =
+    $("searchInput");
+
+  const clear =
+    $("clearSearch");
+
+  if (!input) return;
+
+  input.addEventListener(
+    "input",
+    () => {
+      currentSearch =
+        input.value;
+
+      if (clear) {
+        clear.classList.toggle(
+          "hidden",
+          !input.value
+        );
+
+        clear.classList.toggle(
+          "grid",
+          !!input.value
+        );
+      }
+
+      updateSearchStatus();
+
+      renderTierList();
+    }
+  );
+
+  clear?.addEventListener(
+    "click",
+    () => {
+      input.value = "";
+
+      currentSearch = "";
+
+      clear.classList.add(
+        "hidden"
+      );
+
+      clear.classList.remove(
+        "grid"
+      );
+
+      updateSearchStatus();
+
+      renderTierList();
+
+      input.focus();
+    }
+  );
+}
+
+
+function updateSearchStatus() {
+  const status =
+    $("searchStatus");
+
+  if (!status) return;
+
+  const search =
+    currentSearch.trim();
+
+  if (!search) {
+    status.textContent =
+      "Search by username or display name.";
+
+    status.className =
+      "mt-3 min-h-5 text-xs text-ink-400";
+
+    return;
+  }
+
+  const count =
+    getFilteredAvatars().length;
+
+  status.textContent =
+    `${count} avatar${count !== 1 ? "s" : ""} found.`;
+
+  status.className =
+    "mt-3 min-h-5 text-xs text-pastel-700";
+}
+
+
+/* =========================================================
+   FILTER BUTTONS
+========================================================= */
+
+function setupFilters() {
+  queryAll(
+    "[data-filter]"
+  ).forEach(button => {
+    button.addEventListener(
+      "click",
+      () => {
+        currentFilter =
+          button.dataset.filter ||
+          "ALL";
+
+        queryAll(
+          "[data-filter]"
+        ).forEach(
+          item => {
+            item.classList.remove(
+              "bg-ink-900",
+              "text-white"
+            );
+
+            item.classList.add(
+              "bg-white"
+            );
+          }
+        );
+
+        button.classList.remove(
+          "bg-white"
+        );
+
+        button.classList.add(
+          "bg-ink-900",
+          "text-white"
+        );
+
+        renderTierList();
+
+        updateSearchStatus();
+      }
+    );
+  });
+}
+
+
+/* =========================================================
+   IMPORT
+========================================================= */
+
+async function importDataFile(event) {
+  const file =
+    event.target.files?.[0];
+
+  if (!file) return;
+
+  try {
+    const text =
+      await file.text();
+
+    const parsed =
+      JSON.parse(text);
+
+    let imported = [];
+
+    if (Array.isArray(parsed)) {
+      imported = parsed;
+    } else if (
+      Array.isArray(parsed.avatars)
+    ) {
+      imported =
+        parsed.avatars;
+    } else {
+      throw new Error(
+        "Invalid JSON format."
+      );
+    }
+
+    if (!imported.length) {
+      throw new Error(
+        "No avatars found in JSON."
+      );
+    }
+
+    const normalized =
+      imported.map(
+        (avatar, index) => ({
+          ...normalizeAvatar({
+            ...avatar,
+            id:
+              avatar.id ||
+              generateId(),
+
+            sort_order:
+              Number.isFinite(
+                Number(
+                  avatar.sort_order
+                )
+              )
+                ? Number(
+                    avatar.sort_order
+                  )
+                : index
+          })
+        })
+      );
+
+    const confirmed =
+      window.confirm(
+        `Import ${normalized.length} avatar(s) into Supabase?\n\nExisting avatars with the same ID will be updated.`
+      );
+
+    if (!confirmed) {
+      event.target.value = "";
+      return;
+    }
+
+    const { error } =
+      await supabaseClient
+        .from(SUPABASE_TABLE)
+        .upsert(
+          normalized,
+          {
+            onConflict: "id"
+          }
+        );
+
+    if (error) {
+      throw error;
+    }
+
+    await loadAvatars();
+
+    showToast(
+      `${normalized.length} avatar(s) imported successfully.`
+    );
+  } catch (error) {
+    console.error(
+      "Import error:",
+      error
+    );
+
+    showToast(
+      error.message ||
+      "Invalid JSON file."
+    );
+  } finally {
+    event.target.value = "";
+  }
+}
+
+
+/* =========================================================
+   EXPORT
+========================================================= */
+
+function exportData() {
+  const data = {
+    exported_at:
+      new Date().toISOString(),
+
+    version:
+      1,
+
+    avatars:
+      avatars
+        .map(
+          avatar => ({
+            id: avatar.id,
+            username: avatar.username,
+            display_name:
+              avatar.display_name,
+            outfit_code:
+              avatar.outfit_code,
+            profile_url:
+              avatar.profile_url,
+            image_url:
+              avatar.image_url,
+            score: avatar.score,
+            tier: avatar.tier,
+            comment:
+              avatar.comment,
+            rated_at:
+              avatar.rated_at,
+            sort_order:
+              avatar.sort_order
+          })
+        )
+  };
+
+  const blob =
+    new Blob(
+      [
+        JSON.stringify(
+          data,
+          null,
+          2
+        )
+      ],
+      {
+        type:
+          "application/json"
+      }
+    );
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const anchor =
+    document.createElement("a");
+
+  anchor.href = url;
+
+  anchor.download =
+    `roblox-avatar-tier-list-${new Date()
+      .toISOString()
+      .slice(0, 10)}.json`;
+
+  document.body.appendChild(
+    anchor
+  );
+
+  anchor.click();
+
+  anchor.remove();
+
+  URL.revokeObjectURL(url);
+
+  showToast(
+    "Data exported successfully."
+  );
+}
+
+
+/* =========================================================
+   TOAST
+========================================================= */
+
+let toastTimer = null;
+
+function showToast(message) {
+  let toast =
+    $("appToast");
+
+  if (!toast) {
+    toast =
+      document.createElement("div");
+
+    toast.id =
+      "appToast";
+
+    toast.className =
+      "fixed bottom-5 left-1/2 z-[9999] hidden -translate-x-1/2 rounded-xl bg-ink-900 px-4 py-3 text-xs font-bold text-white shadow-floating";
+
+    document.body.appendChild(
+      toast
+    );
+  }
+
+  toast.textContent =
+    message;
+
+  toast.classList.remove(
+    "hidden"
+  );
+
+  clearTimeout(toastTimer);
+
+  toastTimer =
+    setTimeout(() => {
+      toast.classList.add(
+        "hidden"
+      );
+    }, 2200);
+}
+
+
+/* =========================================================
+   IMAGE DROP ZONE
+========================================================= */
+
+function setupImageUpload() {
+  const zone =
+    $("imageDropZone");
+
+  const input =
+    $("avatarImageInput");
+
+  const change =
+    $("changeImage");
+
+  if (!zone || !input) {
+    return;
+  }
+
+  zone.addEventListener(
+    "click",
+    event => {
+      if (
+        event.target.closest(
+          "#changeImage"
+        )
+      ) {
+        return;
+      }
+
+      input.click();
+    }
+  );
+
+  input.addEventListener(
+    "change",
+    event => {
+      const file =
+        event.target.files?.[0];
+
+      handleImageFile(file);
+    }
+  );
+
+  change?.addEventListener(
+    "click",
+    event => {
+      event.stopPropagation();
+
+      input.click();
+    }
+  );
+
+  zone.addEventListener(
+    "dragover",
+    event => {
+      event.preventDefault();
+
+      zone.classList.add(
+        "image-drop-active"
+      );
+    }
+  );
+
+  zone.addEventListener(
+    "dragleave",
+    () => {
+      zone.classList.remove(
+        "image-drop-active"
+      );
+    }
+  );
+
+  zone.addEventListener(
+    "drop",
+    event => {
+      event.preventDefault();
+
+      zone.classList.remove(
+        "image-drop-active"
+      );
+
+      const file =
+        event.dataTransfer
+          ?.files?.[0];
+
+      handleImageFile(file);
+    }
+  );
+}
+
+
+/* =========================================================
+   EVENT DELEGATION
+========================================================= */
+
+function setupAdminDelegation() {
+  const container =
+    $("adminTierContainer");
+
+  if (!container) return;
+
+  container.addEventListener(
+    "click",
+    event => {
+      const editButton =
+        event.target.closest(
+          ".edit-avatar-button"
+        );
+
+      if (editButton) {
+        event.stopPropagation();
+
+        openEditAvatarModal(
+          editButton.dataset.avatarId
+        );
+
+        return;
+      }
+
+      const deleteButton =
+        event.target.closest(
+          ".delete-avatar-button"
+        );
+
+      if (deleteButton) {
+        event.stopPropagation();
+
+        deleteAvatar(
+          deleteButton.dataset.avatarId
+        );
+
+        return;
+      }
+    }
+  );
+}
+
+
+/* =========================================================
+   PUBLIC AVATAR CLICK
+========================================================= */
+
+function setupPublicAvatarClick() {
+  const container =
+    $("tierContainer");
+
+  if (!container) return;
+
+  container.addEventListener(
+    "click",
+    event => {
+      const card =
+        event.target.closest(
+          ".avatar-card"
+        );
+
+      if (!card) return;
+
+      openAvatarModal(
+        card.dataset.avatarId
+      );
+    }
+  );
+}
+
+
+/* =========================================================
+   ADMIN BUTTON
+   =========================================================
+
+   THIS IS THE IMPORTANT FIX.
+
+   The listener is registered after DOM exists.
+========================================================= */
+
+function setupAdminButton() {
+  const button =
+    $("adminButton");
+
+  if (!button) {
+    console.error(
+      "CRITICAL: #adminButton was not found."
+    );
+
+    return;
+  }
+
+  console.log(
+    "Admin button initialized."
+  );
+
+  button.addEventListener(
+    "click",
+    event => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      console.log(
+        "Admin button clicked."
+      );
+
+      openAdminLogin();
+    }
+  );
+}
+
+
+/* =========================================================
+   KEYBOARD
+========================================================= */
+
+function setupKeyboard() {
+  document.addEventListener(
+    "keydown",
+    event => {
+      if (
+        event.key === "Escape"
+      ) {
+        if (
+          !$("avatarModal")?.classList.contains(
+            "hidden"
+          )
+        ) {
+          closeAvatarModal();
+          return;
+        }
+
+        if (
+          !$("addAvatarModal")?.classList.contains(
+            "hidden"
+          )
+        ) {
+          closeAddAvatarModal();
+          return;
+        }
+
+        if (
+          !$("adminLoginModal")?.classList.contains(
+            "hidden"
+          )
+        ) {
+          closeAdminLoginModal();
+          return;
+        }
+      }
+    }
+  );
+
+  $("adminPassword")?.addEventListener(
+    "keydown",
+    event => {
+      if (
+        event.key === "Enter"
+      ) {
+        event.preventDefault();
+
+        loginAdmin();
+      }
+    }
+  );
+}
+
+
+/* =========================================================
+   ALL BUTTONS
+========================================================= */
+
+function setupButtons() {
+  /*
+   * ADMIN
+   */
+  setupAdminButton();
+
+  $("unlockAdmin")?.addEventListener(
+    "click",
+    loginAdmin
+  );
+
+  $("cancelAdmin")?.addEventListener(
     "click",
     closeAdminLoginModal
   );
 
-  $("cancelAdmin")?.addEventListener(
+  $("closeAdminLogin")?.addEventListener(
     "click",
     closeAdminLoginModal
   );
@@ -539,183 +3172,18 @@ function initializeAdminLogin() {
     closeAdminLoginModal
   );
 
-  $("unlockAdmin")?.addEventListener(
+  $("logoutAdmin")?.addEventListener(
     "click",
-    handleAdminLogin
+    logoutAdmin
   );
 
-  $("adminPassword")?.addEventListener(
-    "keydown",
-    (event) => {
-      if (event.key === "Enter") {
-        handleAdminLogin();
-      }
-    }
-  );
-}
 
-function openAdminLogin() {
-  const modal =
-    $("adminLoginModal");
-
-  if (!modal) return;
-
-  $("adminError").textContent = "";
-
-  $("adminPassword").value = "";
-
-  showElement(modal);
-
-  setTimeout(
-    () =>
-      $("adminPassword")?.focus(),
-    100
-  );
-}
-
-function closeAdminLoginModal() {
-  hideElement(
-    $("adminLoginModal")
-  );
-}
-
-async function handleAdminLogin() {
-  const input =
-    $("adminPassword");
-
-  const error =
-    $("adminError");
-
-  const button =
-    $("unlockAdmin");
-
-  const password =
-    input?.value || "";
-
-  if (!password) {
-    error.textContent =
-      "Please enter the administrator password.";
-
-    return;
-  }
-
-  button.disabled = true;
-
-  button.textContent =
-    "Checking...";
-
-  try {
-    const response =
-      await fetch(
-        "/api/admin-login",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            password
-          })
-        }
-      );
-
-    const result =
-      await response
-        .json()
-        .catch(
-          () => ({})
-        );
-
-    if (
-      !response.ok ||
-      !result.success
-    ) {
-      error.textContent =
-        result.message ||
-        "Incorrect password.";
-
-      input.value = "";
-
-      input.focus();
-
-      return;
-    }
-
-    setAdminSession(true);
-
-    closeAdminLoginModal();
-
-    await loadData();
-
-    openAdminPanel();
-  } catch (requestError) {
-    console.error(
-      "Admin login error:",
-      requestError
-    );
-
-    error.textContent =
-      "Unable to connect to the server.";
-  } finally {
-    button.disabled = false;
-
-    button.textContent =
-      "Unlock";
-  }
-}
-
-/* =========================================================
-   ADMIN PANEL
-========================================================= */
-
-function openAdminPanel() {
-  const panel =
-    $("adminPanel");
-
-  if (!panel) return;
-
-  if (!isAdminLoggedIn()) {
-    openAdminLogin();
-
-    return;
-  }
-
-  renderAdminTierList();
-
-  showElement(panel);
-
-  document.body.style.overflow =
-    "hidden";
-}
-
-function hideAdminPanel() {
-  hideElement(
-    $("adminPanel")
-  );
-
-  document.body.style.overflow =
-    "";
-}
-
-/* =========================================================
-   ADD / EDIT MODAL
-========================================================= */
-
-function initializeAddAvatarModal() {
+  /*
+   * ADD / EDIT
+   */
   $("addAvatarButton")?.addEventListener(
     "click",
-    () => {
-      if (!isAdminLoggedIn()) {
-        openAdminLogin();
-
-        return;
-      }
-
-      openAddAvatarModal();
-    }
+    openAddAvatarModal
   );
 
   $("closeAddAvatar")?.addEventListener(
@@ -735,1530 +3203,13 @@ function initializeAddAvatarModal() {
 
   $("saveAvatar")?.addEventListener(
     "click",
-    handleSaveAvatar
+    saveAvatar
   );
 
-  const zone =
-    $("imageDropZone");
 
-  const input =
-    $("avatarImageInput");
-
-  const change =
-    $("changeImage");
-
-  zone?.addEventListener(
-    "click",
-    (event) => {
-      if (
-        event.target === change ||
-        event.target.closest(
-          "#changeImage"
-        )
-      ) {
-        return;
-      }
-
-      input?.click();
-    }
-  );
-
-  zone?.addEventListener(
-    "dragover",
-    (event) => {
-      event.preventDefault();
-
-      zone.classList.add(
-        "image-drop-active"
-      );
-    }
-  );
-
-  zone?.addEventListener(
-    "dragleave",
-    () => {
-      zone.classList.remove(
-        "image-drop-active"
-      );
-    }
-  );
-
-  zone?.addEventListener(
-    "drop",
-    (event) => {
-      event.preventDefault();
-
-      zone.classList.remove(
-        "image-drop-active"
-      );
-
-      const file =
-        event.dataTransfer
-          .files?.[0];
-
-      if (file) {
-        processImageFile(file);
-      }
-    }
-  );
-
-  input?.addEventListener(
-    "change",
-    () => {
-      const file =
-        input.files?.[0];
-
-      if (file) {
-        processImageFile(file);
-      }
-    }
-  );
-
-  change?.addEventListener(
-    "click",
-    (event) => {
-      event.stopPropagation();
-
-      input?.click();
-    }
-  );
-}
-
-function openAddAvatarModal() {
-  const modal =
-    $("addAvatarModal");
-
-  if (!modal) return;
-
-  editingAvatarId = null;
-
-  originalImagePath = "";
-
-  resetAvatarForm();
-
-  const title =
-    modal.querySelector("h2");
-
-  if (title) {
-    title.textContent =
-      "Add Avatar";
-  }
-
-  showElement(modal);
-
-  document.body.style.overflow =
-    "hidden";
-
-  setTimeout(
-    () =>
-      $("avatarUsername")?.focus(),
-    100
-  );
-}
-
-function closeAddAvatarModal() {
-  hideElement(
-    $("addAvatarModal")
-  );
-
-  document.body.style.overflow =
-    "";
-
-  editingAvatarId = null;
-
-  originalImagePath = "";
-
-  selectedImageData = "";
-
-  selectedImageFile = null;
-}
-
-function resetAvatarForm() {
-  [
-    "avatarUsername",
-    "avatarDisplayName",
-    "avatarOutfitCode",
-    "avatarProfileUrl",
-    "avatarScore",
-    "avatarComment"
-  ].forEach(
-    (id) => {
-      const el = $(id);
-
-      if (el) {
-        el.value = "";
-      }
-    }
-  );
-
-  if ($("avatarTier")) {
-    $("avatarTier").value =
-      "S";
-  }
-
-  selectedImageData = "";
-
-  selectedImageFile = null;
-
-  originalImagePath = "";
-
-  if ($("avatarImageInput")) {
-    $("avatarImageInput").value =
-      "";
-  }
-
-  if ($("imagePreview")) {
-    $("imagePreview").src = "";
-  }
-
-  if ($("imageFileName")) {
-    $("imageFileName").textContent =
-      "";
-  }
-
-  hideElement(
-    $("imagePreviewContainer")
-  );
-
-  $("uploadPlaceholder")?.classList.remove(
-    "hidden"
-  );
-}
-
-/* =========================================================
-   IMAGE PROCESSING
-========================================================= */
-
-function processImageFile(file) {
-  if (
-    !ALLOWED_IMAGE_TYPES.includes(
-      file.type
-    )
-  ) {
-    alert(
-      "Format gambar harus PNG, JPG/JPEG, atau WEBP."
-    );
-
-    return;
-  }
-
-  if (
-    file.size >
-    MAX_IMAGE_SIZE
-  ) {
-    alert(
-      "Ukuran gambar maksimal 5 MB."
-    );
-
-    return;
-  }
-
-  selectedImageFile =
-    file;
-
-  const reader =
-    new FileReader();
-
-  reader.onload = (
-    event
-  ) => {
-    selectedImageData =
-      event.target.result;
-
-    $("imagePreview").src =
-      selectedImageData;
-
-    $("imageFileName").textContent =
-      file.name;
-
-    $("uploadPlaceholder")?.classList.add(
-      "hidden"
-    );
-
-    showElement(
-      $("imagePreviewContainer")
-    );
-  };
-
-  reader.onerror = () => {
-    alert(
-      "Gagal membaca gambar."
-    );
-  };
-
-  reader.readAsDataURL(file);
-}
-
-/* =========================================================
-   SAVE AVATAR
-========================================================= */
-
-async function handleSaveAvatar() {
-  if (!isAdminLoggedIn()) {
-    closeAddAvatarModal();
-
-    openAdminLogin();
-
-    return;
-  }
-
-  if (!ensureSupabase()) {
-    return;
-  }
-
-  const username =
-    $("avatarUsername")
-      .value
-      .trim();
-
-  const displayName =
-    $("avatarDisplayName")
-      .value
-      .trim() ||
-    username;
-
-  const outfitCode =
-    $("avatarOutfitCode")
-      .value
-      .trim();
-
-  const profileUrl =
-    $("avatarProfileUrl")
-      .value
-      .trim();
-
-  const scoreValue =
-    $("avatarScore")
-      .value
-      .trim();
-
-  const tier =
-    $("avatarTier")
-      .value ||
-    "S";
-
-  const comment =
-    $("avatarComment")
-      .value
-      .trim();
-
-  if (!username) {
-    alert(
-      "Roblox Username wajib diisi."
-    );
-
-    return;
-  }
-
-  if (!outfitCode) {
-    alert(
-      "Outfit Code wajib diisi."
-    );
-
-    return;
-  }
-
-  if (
-    !selectedImageFile &&
-    !editingAvatarId
-  ) {
-    alert(
-      "Avatar Screenshot wajib diupload."
-    );
-
-    return;
-  }
-
-  let score =
-    parseFloat(
-      scoreValue
-    );
-
-  if (
-    Number.isNaN(score)
-  ) {
-    score = 0;
-  }
-
-  if (
-    score < 0 ||
-    score > 10
-  ) {
-    alert(
-      "Rating harus antara 0 sampai 10."
-    );
-
-    return;
-  }
-
-  if (
-    !ALLOWED_TIERS.includes(
-      tier
-    )
-  ) {
-    alert(
-      "Tier tidak valid."
-    );
-
-    return;
-  }
-
-  const finalProfileUrl =
-    profileUrl ||
-    `https://www.roblox.com/search/users?keyword=${encodeURIComponent(
-      username
-    )}`;
-
-  const saveButton =
-    $("saveAvatar");
-
-  const originalButtonText =
-    saveButton?.textContent ||
-    "Save";
-
-  if (saveButton) {
-    saveButton.disabled =
-      true;
-
-    saveButton.textContent =
-      editingAvatarId
-        ? "Updating..."
-        : "Uploading...";
-  }
-
-  try {
-    /* =====================================================
-       EDIT
-    ===================================================== */
-
-    if (editingAvatarId) {
-      const index =
-        avatars.findIndex(
-          (avatar) =>
-            avatar.id ===
-            editingAvatarId
-        );
-
-      if (index === -1) {
-        throw new Error(
-          "Avatar tidak ditemukan."
-        );
-      }
-
-      const currentAvatar =
-        avatars[index];
-
-      let imageUrl =
-        currentAvatar.image ||
-        "";
-
-      let imagePath =
-        currentAvatar.imagePath ||
-        "";
-
-      /* ================================================
-         Upload image baru jika ada
-      ================================================ */
-
-      if (selectedImageFile) {
-        const uploaded =
-          await uploadAvatarImage(
-            selectedImageFile,
-            editingAvatarId
-          );
-
-        imageUrl =
-          uploaded.url;
-
-        imagePath =
-          uploaded.path;
-      }
-
-      const updatePayload = {
-        username,
-
-        display_name:
-          displayName,
-
-        outfit_code:
-          outfitCode,
-
-        profile_url:
-          finalProfileUrl,
-
-        image:
-          imageUrl,
-
-        image_path:
-          imagePath,
-
-        score,
-
-        tier,
-
-        comment,
-
-        updated_at:
-          new Date().toISOString()
-      };
-
-      const {
-        error
-      } =
-        await supabaseClient
-          .from("avatars")
-          .update(
-            updatePayload
-          )
-          .eq(
-            "id",
-            editingAvatarId
-          );
-
-      if (error) {
-        console.error(
-          "Update avatar error:",
-          error
-        );
-
-        throw error;
-      }
-
-      /* ================================================
-         Delete gambar lama jika diganti
-      ================================================ */
-
-      if (
-        selectedImageFile &&
-        currentAvatar.imagePath &&
-        currentAvatar.imagePath !==
-          imagePath
-      ) {
-        await deleteStorageImage(
-          currentAvatar.imagePath
-        );
-      }
-
-      closeAddAvatarModal();
-
-      await loadData();
-
-      renderAll();
-
-      alert(
-        "Avatar berhasil diperbarui."
-      );
-
-      return;
-    }
-
-    /* =====================================================
-       ADD NEW AVATAR
-    ===================================================== */
-
-    const avatarId =
-      generateId();
-
-    let imageUrl = "";
-    let imagePath = "";
-
-    if (selectedImageFile) {
-      const uploaded =
-        await uploadAvatarImage(
-          selectedImageFile,
-          avatarId
-        );
-
-      imageUrl =
-        uploaded.url;
-
-      imagePath =
-        uploaded.path;
-    }
-
-    const now =
-      new Date().toISOString();
-
-    const newAvatar = {
-      id: avatarId,
-
-      username,
-
-      display_name:
-        displayName,
-
-      outfit_code:
-        outfitCode,
-
-      profile_url:
-        finalProfileUrl,
-
-      image:
-        imageUrl,
-
-      image_path:
-        imagePath,
-
-      score,
-
-      tier,
-
-      comment,
-
-      created_at:
-        now,
-
-      updated_at:
-        now
-    };
-
-    const {
-      error
-    } =
-      await supabaseClient
-        .from("avatars")
-        .insert(
-          newAvatar
-        );
-
-    if (error) {
-      console.error(
-        "Insert avatar error:",
-        error
-      );
-
-      /* Jika DB gagal setelah storage upload,
-         hapus gambar supaya tidak jadi orphan file. */
-
-      if (imagePath) {
-        await deleteStorageImage(
-          imagePath
-        );
-      }
-
-      throw error;
-    }
-
-    closeAddAvatarModal();
-
-    await loadData();
-
-    renderAll();
-
-    alert(
-      "Avatar berhasil ditambahkan."
-    );
-  } catch (error) {
-    console.error(
-      "Save avatar error:",
-      error
-    );
-
-    alert(
-      "Gagal menyimpan avatar.\n\n" +
-      (
-        error?.message ||
-        "Unknown error"
-      )
-    );
-  } finally {
-    if (saveButton) {
-      saveButton.disabled =
-        false;
-
-      saveButton.textContent =
-        originalButtonText;
-    }
-  }
-}
-
-/* =========================================================
-   EDIT AVATAR
-========================================================= */
-
-function editAvatar(id) {
-  if (!isAdminLoggedIn()) {
-    openAdminLogin();
-
-    return;
-  }
-
-  const avatar =
-    avatars.find(
-      (item) =>
-        item.id === id
-    );
-
-  if (!avatar) {
-    alert(
-      "Avatar tidak ditemukan."
-    );
-
-    return;
-  }
-
-  editingAvatarId =
-    id;
-
-  originalImagePath =
-    avatar.imagePath ||
-    "";
-
-  selectedImageFile =
-    null;
-
-  selectedImageData =
-    avatar.image ||
-    "";
-
-  $("avatarUsername").value =
-    avatar.username ||
-    "";
-
-  $("avatarDisplayName").value =
-    avatar.displayName ||
-    "";
-
-  $("avatarOutfitCode").value =
-    avatar.outfitCode ||
-    "";
-
-  $("avatarProfileUrl").value =
-    avatar.profileUrl ||
-    "";
-
-  $("avatarScore").value =
-    avatar.score ??
-    "";
-
-  $("avatarTier").value =
-    avatar.tier ||
-    "S";
-
-  $("avatarComment").value =
-    avatar.comment ||
-    "";
-
-  if (avatar.image) {
-    $("imagePreview").src =
-      avatar.image;
-
-    $("imageFileName").textContent =
-      "Current avatar image";
-
-    $("uploadPlaceholder")?.classList.add(
-      "hidden"
-    );
-
-    showElement(
-      $("imagePreviewContainer")
-    );
-  } else {
-    $("uploadPlaceholder")?.classList.remove(
-      "hidden"
-    );
-
-    hideElement(
-      $("imagePreviewContainer")
-    );
-  }
-
-  const title =
-    $("addAvatarModal")
-      ?.querySelector("h2");
-
-  if (title) {
-    title.textContent =
-      "Edit Avatar";
-  }
-
-  showElement(
-    $("addAvatarModal")
-  );
-
-  document.body.style.overflow =
-    "hidden";
-}
-
-/* =========================================================
-   DELETE AVATAR
-========================================================= */
-
-async function deleteAvatar(id) {
-  if (!isAdminLoggedIn()) {
-    openAdminLogin();
-
-    return;
-  }
-
-  if (!ensureSupabase()) {
-    return;
-  }
-
-  const avatar =
-    avatars.find(
-      (item) =>
-        item.id === id
-    );
-
-  if (
-    !avatar ||
-    !confirm(
-      `Delete @${avatar.username} dari tier list?`
-    )
-  ) {
-    return;
-  }
-
-  try {
-    const {
-      error
-    } =
-      await supabaseClient
-        .from("avatars")
-        .delete()
-        .eq(
-          "id",
-          id
-        );
-
-    if (error) {
-      console.error(
-        "Delete avatar error:",
-        error
-      );
-
-      throw error;
-    }
-
-    if (avatar.imagePath) {
-      await deleteStorageImage(
-        avatar.imagePath
-      );
-    }
-
-    await loadData();
-
-    renderAll();
-
-    alert(
-      "Avatar berhasil dihapus."
-    );
-  } catch (error) {
-    console.error(
-      "Delete error:",
-      error
-    );
-
-    alert(
-      "Gagal menghapus avatar.\n\n" +
-      (
-        error?.message ||
-        "Unknown error"
-      )
-    );
-  }
-}
-
-/* =========================================================
-   MOVE AVATAR TO TIER
-========================================================= */
-
-async function moveAvatarToTier(
-  id,
-  tier
-) {
-  if (!isAdminLoggedIn()) {
-    openAdminLogin();
-
-    return;
-  }
-
-  if (!ensureSupabase()) {
-    return;
-  }
-
-  if (
-    !ALLOWED_TIERS.includes(
-      tier
-    )
-  ) {
-    return;
-  }
-
-  try {
-    const {
-      error
-    } =
-      await supabaseClient
-        .from("avatars")
-        .update({
-          tier,
-
-          updated_at:
-            new Date().toISOString()
-        })
-        .eq(
-          "id",
-          id
-        );
-
-    if (error) {
-      console.error(
-        "Move avatar error:",
-        error
-      );
-
-      throw error;
-    }
-
-    await loadData();
-
-    renderAll();
-  } catch (error) {
-    console.error(
-      "Move tier error:",
-      error
-    );
-
-    alert(
-      "Gagal memindahkan avatar."
-    );
-  }
-}
-
-/* =========================================================
-   PUBLIC TIER LIST
-========================================================= */
-
-function renderPublicTierList() {
-  const container =
-    $("tierContainer");
-
-  const emptyState =
-    $("emptyState");
-
-  if (!container) return;
-
-  container.innerHTML =
-    "";
-
-  const tiers = [
-    "S",
-    "A",
-    "B",
-    "C",
-    "D"
-  ];
-
-  let visible =
-    [...avatars];
-
-  if (currentSearch) {
-    const search =
-      currentSearch.toLowerCase();
-
-    visible =
-      visible.filter(
-        (a) =>
-          String(
-            a.username ||
-              ""
-          )
-            .toLowerCase()
-            .includes(search) ||
-          String(
-            a.displayName ||
-              ""
-          )
-            .toLowerCase()
-            .includes(search)
-      );
-  }
-
-  if (
-    currentFilter !==
-    "ALL"
-  ) {
-    visible =
-      visible.filter(
-        (a) =>
-          a.tier ===
-          currentFilter
-      );
-  }
-
-  if (!visible.length) {
-    emptyState?.classList.remove(
-      "hidden"
-    );
-
-    return;
-  }
-
-  emptyState?.classList.add(
-    "hidden"
-  );
-
-  tiers.forEach(
-    (tier) => {
-      const items =
-        visible.filter(
-          (a) =>
-            a.tier ===
-            tier
-        );
-
-      if (items.length) {
-        container.appendChild(
-          createPublicTierElement(
-            tier,
-            items
-          )
-        );
-      }
-    }
-  );
-}
-
-function createPublicTierElement(
-  tier,
-  tierAvatars
-) {
-  const wrapper =
-    document.createElement(
-      "div"
-    );
-
-  wrapper.className =
-    "tier-card overflow-hidden rounded-2xl border border-pastel-200/70 bg-white shadow-soft";
-
-  wrapper.innerHTML = `
-    <div class="flex items-center justify-between px-4 py-3 ${getTierColorClass(
-      tier
-    )}">
-      <div class="flex items-center gap-3">
-        <div class="grid h-10 w-10 place-items-center rounded-xl bg-white/80 font-display text-lg font-bold text-ink-900 shadow-sm">
-          ${escapeHTML(tier)}
-        </div>
-
-        <div>
-          <div class="text-[9px] font-extrabold tracking-widest text-ink-700">
-            ${escapeHTML(
-              getTierLabel(tier)
-            )}
-          </div>
-
-          <div class="mt-0.5 text-[10px] text-ink-500">
-            ${
-              tierAvatars.length
-            }
-            avatar${
-              tierAvatars.length !==
-              1
-                ? "s"
-                : ""
-            }
-          </div>
-        </div>
-      </div>
-
-      <div class="text-[10px] font-bold text-ink-400">
-        ${
-          tierAvatars.length
-        }
-      </div>
-    </div>
-  `;
-
-  const grid =
-    document.createElement(
-      "div"
-    );
-
-  grid.className =
-    "grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 md:grid-cols-4";
-
-  [
-    ...tierAvatars
-  ]
-    .sort(
-      (a, b) =>
-        Number(
-          b.score || 0
-        ) -
-        Number(
-          a.score || 0
-        )
-    )
-    .forEach(
-      (avatar) => {
-        grid.appendChild(
-          createPublicAvatarCard(
-            avatar
-          )
-        );
-      }
-    );
-
-  wrapper.appendChild(
-    grid
-  );
-
-  return wrapper;
-}
-
-function createPublicAvatarCard(
-  avatar
-) {
-  const card =
-    document.createElement(
-      "button"
-    );
-
-  card.type =
-    "button";
-
-  card.className =
-    "avatar-card group overflow-hidden rounded-2xl border border-pastel-200/70 bg-white text-left shadow-sm";
-
-  card.addEventListener(
-    "click",
-    () =>
-      openAvatarModal(
-        avatar.id
-      )
-  );
-
-  const image =
-    avatar.image ||
-    createPlaceholderAvatar();
-
-  card.innerHTML = `
-    <div class="relative aspect-[4/5] overflow-hidden bg-pastel-100">
-
-      <img
-        src="${escapeAttribute(
-          image
-        )}"
-        alt="${escapeAttribute(
-          avatar.username ||
-            "Roblox Avatar"
-        )}"
-        class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-        loading="lazy"
-      >
-
-      <div class="absolute left-2 top-2 grid h-8 w-8 place-items-center rounded-xl bg-white/90 font-display text-sm font-bold text-ink-900 shadow-sm backdrop-blur">
-        ${escapeHTML(
-          avatar.tier ||
-            "S"
-        )}
-      </div>
-
-      <div class="absolute bottom-2 right-2 rounded-lg bg-ink-900/90 px-2 py-1 text-[9px] font-bold text-white backdrop-blur">
-        ${formatScore(
-          avatar.score
-        )}
-      </div>
-
-    </div>
-
-    <div class="p-3">
-
-      <div class="truncate text-xs font-bold text-ink-900">
-        @${escapeHTML(
-          avatar.username ||
-            ""
-        )}
-      </div>
-
-      <div class="mt-1 truncate text-[9px] text-ink-400">
-        ${escapeHTML(
-          avatar.displayName ||
-            ""
-        )}
-      </div>
-
-      <div class="mt-2 flex items-center justify-between">
-
-        <span class="text-[8px] font-bold uppercase tracking-widest text-ink-400">
-          Outfit
-        </span>
-
-        <span class="max-w-[90px] truncate text-[9px] font-semibold text-pastel-700">
-          ${escapeHTML(
-            avatar.outfitCode ||
-              "-"
-          )}
-        </span>
-
-      </div>
-
-    </div>
-  `;
-
-  card
-    .querySelector("img")
-    ?.addEventListener(
-      "error",
-      (event) => {
-        event.currentTarget.src =
-          createPlaceholderAvatar();
-      },
-      {
-        once: true
-      }
-    );
-
-  return card;
-}
-
-/* =========================================================
-   ADMIN TIER LIST
-========================================================= */
-
-function renderAdminTierList() {
-  const container =
-    $("adminTierContainer");
-
-  if (!container) return;
-
-  container.innerHTML =
-    "";
-
-  ALLOWED_TIERS.forEach(
-    (tier) => {
-      container.appendChild(
-        createAdminTierElement(
-          tier,
-          avatars.filter(
-            (a) =>
-              a.tier ===
-              tier
-          )
-        )
-      );
-    }
-  );
-}
-
-function createAdminTierElement(
-  tier,
-  tierAvatars
-) {
-  const wrapper =
-    document.createElement(
-      "section"
-    );
-
-  wrapper.className =
-    "overflow-hidden rounded-2xl border border-pastel-200/70 bg-white shadow-soft";
-
-  wrapper.innerHTML = `
-    <div class="${getTierColorClass(
-      tier
-    )} flex items-center justify-between px-4 py-3">
-
-      <div class="flex items-center gap-3">
-
-        <div class="grid h-10 w-10 place-items-center rounded-xl bg-white/80 font-display text-lg font-bold text-ink-900 shadow-sm">
-          ${escapeHTML(
-            tier
-          )}
-        </div>
-
-        <div>
-
-          <div class="text-[10px] font-bold text-ink-700">
-            ${escapeHTML(
-              getTierLabel(
-                tier
-              )
-            )}
-          </div>
-
-          <div class="mt-0.5 text-[9px] text-ink-500">
-            ${
-              tierAvatars.length
-            }
-            avatar${
-              tierAvatars.length !==
-              1
-                ? "s"
-                : ""
-            }
-          </div>
-
-        </div>
-
-      </div>
-
-      <span class="hidden text-[9px] font-bold text-ink-500 sm:block">
-        Drag to another tier
-      </span>
-
-    </div>
-  `;
-
-  const dropZone =
-    document.createElement(
-      "div"
-    );
-
-  dropZone.className =
-    "admin-tier-dropzone min-h-[130px] p-3 transition";
-
-  dropZone.dataset.tier =
-    tier;
-
-  if (
-    !tierAvatars.length
-  ) {
-    dropZone.innerHTML = `
-      <div class="admin-drop-hint grid min-h-[100px] place-items-center rounded-xl border-2 border-dashed border-pastel-200 text-center text-[10px] text-ink-400">
-        <span>
-          Drop avatar here
-          <br>
-          <span class="text-[9px] text-ink-300">
-            Desktop: drag & drop
-          </span>
-        </span>
-      </div>
-    `;
-  }
-
-  dropZone.addEventListener(
-    "dragover",
-    (event) => {
-      event.preventDefault();
-
-      dropZone.classList.add(
-        "drop-active"
-      );
-    }
-  );
-
-  dropZone.addEventListener(
-    "dragleave",
-    () => {
-      dropZone.classList.remove(
-        "drop-active"
-      );
-    }
-  );
-
-  dropZone.addEventListener(
-    "drop",
-    (event) => {
-      event.preventDefault();
-
-      dropZone.classList.remove(
-        "drop-active"
-      );
-
-      const id =
-        event.dataTransfer.getData(
-          "text/plain"
-        );
-
-      if (id) {
-        moveAvatarToTier(
-          id,
-          tier
-        );
-      }
-    }
-  );
-
-  tierAvatars.forEach(
-    (avatar) => {
-      dropZone.appendChild(
-        createAdminAvatarCard(
-          avatar
-        )
-      );
-    }
-  );
-
-  wrapper.appendChild(
-    dropZone
-  );
-
-  return wrapper;
-}
-
-function createAdminAvatarCard(
-  avatar
-) {
-  const card =
-    document.createElement(
-      "article"
-    );
-
-  card.draggable =
-    true;
-
-  card.dataset.avatarId =
-    avatar.id;
-
-  card.className =
-    "admin-avatar-card group flex cursor-grab items-center gap-3 rounded-xl border border-pastel-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing";
-
-  const image =
-    avatar.image ||
-    createPlaceholderAvatar();
-
-  card.innerHTML = `
-    <img
-      class="admin-avatar-image h-14 w-14 shrink-0 rounded-xl bg-pastel-100 object-cover"
-      src="${escapeAttribute(
-        image
-      )}"
-      alt="${escapeAttribute(
-        avatar.username ||
-          "Avatar"
-      )}"
-    >
-
-    <div class="min-w-0 flex-1">
-
-      <div class="truncate text-xs font-bold text-ink-900">
-        @${escapeHTML(
-          avatar.username ||
-            ""
-        )}
-      </div>
-
-      <div class="mt-1 truncate text-[9px] text-ink-400">
-        ${escapeHTML(
-          avatar.displayName ||
-            ""
-        )}
-      </div>
-
-      <div class="mt-2 flex items-center gap-2">
-
-        <span class="rounded-md bg-pastel-100 px-1.5 py-1 text-[8px] font-bold text-pastel-800">
-          ${formatScore(
-            avatar.score
-          )}
-        </span>
-
-        <span class="truncate text-[8px] text-ink-400">
-          Outfit:
-          ${escapeHTML(
-            avatar.outfitCode ||
-              "-"
-          )}
-        </span>
-
-      </div>
-
-    </div>
-
-    <div class="admin-avatar-actions flex shrink-0 gap-1">
-
-      <button
-        type="button"
-        data-action="edit"
-        class="grid h-8 w-8 place-items-center rounded-lg bg-pastel-50 text-xs text-ink-500 transition hover:bg-pastel-100"
-        title="Edit"
-        aria-label="Edit avatar"
-      >
-        ✎
-      </button>
-
-      <button
-        type="button"
-        data-action="delete"
-        class="grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-xs text-red-500 transition hover:bg-red-100"
-        title="Delete"
-        aria-label="Delete avatar"
-      >
-        ×
-      </button>
-
-    </div>
-  `;
-
-  card.addEventListener(
-    "dragstart",
-    (event) => {
-      event.dataTransfer.setData(
-        "text/plain",
-        avatar.id
-      );
-
-      event.dataTransfer.effectAllowed =
-        "move";
-
-      card.classList.add(
-        "dragging"
-      );
-    }
-  );
-
-  card.addEventListener(
-    "dragend",
-    () => {
-      card.classList.remove(
-        "dragging"
-      );
-    }
-  );
-
-  card
-    .querySelector(
-      '[data-action="edit"]'
-    )
-    ?.addEventListener(
-      "click",
-      (event) => {
-        event.stopPropagation();
-
-        editAvatar(
-          avatar.id
-        );
-      }
-    );
-
-  card
-    .querySelector(
-      '[data-action="delete"]'
-    )
-    ?.addEventListener(
-      "click",
-      (event) => {
-        event.stopPropagation();
-
-        deleteAvatar(
-          avatar.id
-        );
-      }
-    );
-
-  card
-    .querySelector("img")
-    ?.addEventListener(
-      "error",
-      (event) => {
-        event.currentTarget.src =
-          createPlaceholderAvatar();
-      },
-      {
-        once: true
-      }
-    );
-
-  return card;
-}
-
-/* =========================================================
-   DETAIL MODAL
-========================================================= */
-
-function initializeAvatarModal() {
+  /*
+   * AVATAR DETAIL
+   */
   $("closeModal")?.addEventListener(
     "click",
     closeAvatarModal
@@ -2271,393 +3222,13 @@ function initializeAvatarModal() {
 
   $("copyOutfit")?.addEventListener(
     "click",
-    copyOutfitCode
+    copyOutfit
   );
 
-  document.addEventListener(
-    "keydown",
-    (event) => {
-      if (
-        event.key !==
-        "Escape"
-      ) {
-        return;
-      }
 
-      if (
-        !$("avatarModal")
-          ?.classList.contains(
-            "hidden"
-          )
-      ) {
-        closeAvatarModal();
-      }
-
-      if (
-        !$("addAvatarModal")
-          ?.classList.contains(
-            "hidden"
-          )
-      ) {
-        closeAddAvatarModal();
-      }
-
-      if (
-        !$("adminLoginModal")
-          ?.classList.contains(
-            "hidden"
-          )
-      ) {
-        closeAdminLoginModal();
-      }
-    }
-  );
-}
-
-function openAvatarModal(id) {
-  const avatar =
-    avatars.find(
-      (item) =>
-        item.id === id
-    );
-
-  if (!avatar) return;
-
-  $("modalAvatarImage").src =
-    avatar.image ||
-    createPlaceholderAvatar();
-
-  $("modalUsername").textContent =
-    `@${avatar.username || ""}`;
-
-  $("modalDisplayName").textContent =
-    avatar.displayName ||
-    "";
-
-  $("modalScore").textContent =
-    formatScore(
-      avatar.score
-    );
-
-  $("modalTier").textContent =
-    `${
-      avatar.tier ||
-      "-"
-    } — ${getTierLabel(
-      avatar.tier
-    )}`;
-
-  $("modalTierBadge").textContent =
-    avatar.tier ||
-    "S";
-
-  $("modalOutfit").textContent =
-    avatar.outfitCode ||
-    "-";
-
-  $("modalDate").textContent =
-    formatDate(
-      avatar.date ||
-        avatar.createdAt
-    );
-
-  $("modalComment").textContent =
-    avatar.comment ||
-    "No comment provided.";
-
-  $("modalProfile").href =
-    avatar.profileUrl ||
-    `https://www.roblox.com/search/users?keyword=${encodeURIComponent(
-      avatar.username ||
-        ""
-    )}`;
-
-  showElement(
-    $("avatarModal")
-  );
-
-  document.body.style.overflow =
-    "hidden";
-}
-
-function closeAvatarModal() {
-  hideElement(
-    $("avatarModal")
-  );
-
-  document.body.style.overflow =
-    "";
-}
-
-async function copyOutfitCode() {
-  const value =
-    $("modalOutfit")
-      ?.textContent
-      ?.trim();
-
-  if (
-    !value ||
-    value === "-"
-  ) {
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(
-      value
-    );
-
-    const button =
-      $("copyOutfit");
-
-    const original =
-      button.textContent;
-
-    button.textContent =
-      "Copied!";
-
-    setTimeout(
-      () =>
-        (button.textContent =
-          original),
-      1200
-    );
-  } catch {
-    alert(
-      `Outfit Code: ${value}`
-    );
-  }
-}
-
-/* =========================================================
-   SEARCH
-========================================================= */
-
-function initializeSearch() {
-  const input =
-    $("searchInput");
-
-  const clear =
-    $("clearSearch");
-
-  if (!input) return;
-
-  input.addEventListener(
-    "input",
-    () => {
-      currentSearch =
-        input.value.trim();
-
-      if (clear) {
-        clear.classList.toggle(
-          "hidden",
-          !currentSearch
-        );
-
-        clear.classList.toggle(
-          "grid",
-          Boolean(
-            currentSearch
-          )
-        );
-      }
-
-      updateSearchStatus();
-
-      renderPublicTierList();
-    }
-  );
-
-  clear?.addEventListener(
-    "click",
-    () => {
-      input.value = "";
-
-      currentSearch =
-        "";
-
-      clear.classList.add(
-        "hidden"
-      );
-
-      clear.classList.remove(
-        "grid"
-      );
-
-      updateSearchStatus();
-
-      renderPublicTierList();
-
-      input.focus();
-    }
-  );
-}
-
-function updateSearchStatus() {
-  const status =
-    $("searchStatus");
-
-  if (!status) return;
-
-  if (!currentSearch) {
-    status.textContent =
-      "Search by username or display name.";
-
-    return;
-  }
-
-  const search =
-    currentSearch.toLowerCase();
-
-  const count =
-    avatars.filter(
-      (a) =>
-        String(
-          a.username ||
-            ""
-        )
-          .toLowerCase()
-          .includes(search) ||
-        String(
-          a.displayName ||
-            ""
-        )
-          .toLowerCase()
-          .includes(search)
-    ).length;
-
-  status.textContent =
-    `${count} avatar${
-      count !== 1
-        ? "s"
-        : ""
-    } found for "${currentSearch}".`;
-}
-
-/* =========================================================
-   FILTERS
-========================================================= */
-
-function initializeFilters() {
-  document
-    .querySelectorAll(
-      ".filter-btn"
-    )
-    .forEach(
-      (button) => {
-        button.addEventListener(
-          "click",
-          () => {
-            currentFilter =
-              button.dataset
-                .filter ||
-              "ALL";
-
-            document
-              .querySelectorAll(
-                ".filter-btn"
-              )
-              .forEach(
-                (item) => {
-                  item.classList.remove(
-                    "bg-ink-900",
-                    "text-white"
-                  );
-
-                  item.classList.add(
-                    "bg-white"
-                  );
-                }
-              );
-
-            button.classList.add(
-              "bg-ink-900",
-              "text-white"
-            );
-
-            button.classList.remove(
-              "bg-white"
-            );
-
-            renderPublicTierList();
-          }
-        );
-      }
-    );
-}
-
-/* =========================================================
-   STATISTICS
-========================================================= */
-
-function updateStatistics() {
-  const total =
-    avatars.length;
-
-  const s =
-    avatars.filter(
-      (a) =>
-        a.tier === "S"
-    ).length;
-
-  const a =
-    avatars.filter(
-      (a) =>
-        a.tier === "A"
-    ).length;
-
-  const other =
-    avatars.filter(
-      (a) =>
-        ![
-          "S",
-          "A"
-        ].includes(
-          a.tier
-        )
-    ).length;
-
-  setText(
-    "heroAvatarCount",
-    total
-  );
-
-  setText(
-    "totalAvatars",
-    total
-  );
-
-  setText(
-    "sCount",
-    s
-  );
-
-  setText(
-    "aCount",
-    a
-  );
-
-  setText(
-    "otherCount",
-    other
-  );
-}
-
-function renderAll() {
-  renderPublicTierList();
-
-  renderAdminTierList();
-
-  updateStatistics();
-
-  updateSearchStatus();
-}
-
-/* =========================================================
-   EXPORT DATA
-========================================================= */
-
-function initializeImportExport() {
+  /*
+   * IMPORT / EXPORT
+   */
   $("exportData")?.addEventListener(
     "click",
     exportData
@@ -2665,585 +3236,101 @@ function initializeImportExport() {
 
   $("importData")?.addEventListener(
     "change",
-    importData
+    importDataFile
   );
 }
 
-function exportData() {
-  if (!isAdminLoggedIn()) {
-    openAdminLogin();
 
+/* =========================================================
+   START APPLICATION
+========================================================= */
+
+async function initApp() {
+  console.log(
+    "Roblox Avatar Rating initializing..."
+  );
+
+  /*
+   * IMPORTANT:
+   * Initialize buttons BEFORE Supabase.
+   *
+   * Therefore, even if Supabase has a problem,
+   * the Admin button can STILL be clicked.
+   */
+  setupButtons();
+
+  setupSearch();
+
+  setupFilters();
+
+  setupImageUpload();
+
+  setupPublicAvatarClick();
+
+  setupAdminDelegation();
+
+  setupDragAndDrop();
+
+  setupKeyboard();
+
+  /*
+   * Initialize Supabase AFTER UI events.
+   */
+  const supabaseReady =
+    initSupabase();
+
+  if (!supabaseReady) {
     return;
   }
 
-  try {
-    const exportAvatars =
-      avatars.map(
-        (avatar) => ({
-          ...avatar
-        })
-      );
+  /*
+   * If previous valid admin session exists,
+   * don't automatically open admin panel.
+   * User can click Admin manually.
+   */
 
-    const blob =
-      new Blob(
-        [
-          JSON.stringify(
-            exportAvatars,
-            null,
-            2
-          )
-        ],
-        {
-          type:
-            "application/json"
-        }
-      );
+  await loadAvatars();
 
-    const url =
-      URL.createObjectURL(
-        blob
-      );
-
-    const link =
-      document.createElement(
-        "a"
-      );
-
-    link.href =
-      url;
-
-    link.download =
-      `roblox-avatar-tier-list-${formatDateForFile(
-        new Date()
-      )}.json`;
-
-    document.body.appendChild(
-      link
-    );
-
-    link.click();
-
-    link.remove();
-
-    URL.revokeObjectURL(
-      url
-    );
-  } catch (error) {
-    console.error(
-      "Export error:",
-      error
-    );
-
-    alert(
-      "Gagal melakukan export."
-    );
-  }
+  console.log(
+    "Roblox Avatar Rating ready."
+  );
 }
+
 
 /* =========================================================
-   IMPORT DATA
+   DOM READY
 ========================================================= */
 
-async function importData(
-  event
+if (
+  document.readyState ===
+  "loading"
 ) {
-  if (!isAdminLoggedIn()) {
-    event.target.value =
-      "";
-
-    openAdminLogin();
-
-    return;
-  }
-
-  if (!ensureSupabase()) {
-    event.target.value =
-      "";
-
-    return;
-  }
-
-  const file =
-    event.target.files?.[0];
-
-  if (!file) return;
-
-  try {
-    const text =
-      await file.text();
-
-    const imported =
-      JSON.parse(text);
-
-    if (
-      !Array.isArray(
-        imported
-      )
-    ) {
-      throw new Error(
-        "Invalid format"
-      );
+  document.addEventListener(
+    "DOMContentLoaded",
+    initApp,
+    {
+      once: true
     }
-
-    if (
-      !confirm(
-        `Import ${imported.length} avatar data?\n\nData yang memiliki ID sama akan diperbarui.`
-      )
-    ) {
-      event.target.value =
-        "";
-
-      return;
-    }
-
-    let successCount =
-      0;
-
-    let failedCount =
-      0;
-
-    for (
-      const rawAvatar of imported
-    ) {
-      try {
-        const avatar =
-          normalizeAvatar(
-            rawAvatar
-          );
-
-        if (
-          !avatar.username ||
-          !avatar.outfitCode
-        ) {
-          failedCount++;
-
-          continue;
-        }
-
-        const payload = {
-          id:
-            avatar.id ||
-            generateId(),
-
-          username:
-            avatar.username,
-
-          display_name:
-            avatar.displayName ||
-            avatar.username,
-
-          outfit_code:
-            avatar.outfitCode,
-
-          profile_url:
-            avatar.profileUrl ||
-            `https://www.roblox.com/search/users?keyword=${encodeURIComponent(
-              avatar.username
-            )}`,
-
-          image:
-            avatar.image ||
-            "",
-
-          image_path:
-            avatar.imagePath ||
-            "",
-
-          score:
-            Number(
-              avatar.score || 0
-            ),
-
-          tier:
-            ALLOWED_TIERS.includes(
-              avatar.tier
-            )
-              ? avatar.tier
-              : "S",
-
-          comment:
-            avatar.comment ||
-            "",
-
-          created_at:
-            avatar.createdAt ||
-            avatar.date ||
-            new Date().toISOString(),
-
-          updated_at:
-            new Date().toISOString()
-        };
-
-        const {
-          error
-        } =
-          await supabaseClient
-            .from("avatars")
-            .upsert(
-              payload,
-              {
-                onConflict:
-                  "id"
-              }
-            );
-
-        if (error) {
-          console.error(
-            "Import item error:",
-            error
-          );
-
-          failedCount++;
-
-          continue;
-        }
-
-        successCount++;
-      } catch (itemError) {
-        console.error(
-          "Import item failed:",
-          itemError
-        );
-
-        failedCount++;
-      }
-    }
-
-    await loadData();
-
-    renderAll();
-
-    alert(
-      `Import selesai.\n\n` +
-      `Berhasil: ${successCount}\n` +
-      `Gagal: ${failedCount}`
-    );
-  } catch (error) {
-    console.error(
-      "Import error:",
-      error
-    );
-
-    alert(
-      "File JSON tidak valid."
-    );
-  }
-
-  event.target.value =
-    "";
+  );
+} else {
+  initApp();
 }
+
 
 /* =========================================================
-   HELPERS
+   DEBUG EXPORT
+   ---------------------------------------------------------
+   Makes debugging easier from browser console.
 ========================================================= */
 
-function getTierLabel(
-  tier
-) {
-  return (
-    {
-      S: "Exceptional",
-      A: "Very Good",
-      B: "Good",
-      C: "Average",
-      D: "Needs Improvement"
-    }[tier] ||
-    "Unrated"
-  );
-}
-
-function getTierColorClass(
-  tier
-) {
-  return (
-    {
-      S: "tier-s-bg",
-      A: "tier-a-bg",
-      B: "tier-b-bg",
-      C: "tier-c-bg",
-      D: "tier-d-bg"
-    }[tier] ||
-    "bg-pastel-100"
-  );
-}
-
-function formatScore(
-  score
-) {
-  const number =
-    Number(score);
-
-  if (
-    Number.isNaN(
-      number
-    )
-  ) {
-    return "0.0";
-  }
-
-  return number
-    .toFixed(1)
-    .replace(
-      ".0",
-      ""
-    );
-}
-
-function formatDate(
-  value
-) {
-  if (!value) return "-";
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "-";
-  }
-
-  return date.toLocaleDateString(
-    "en-US",
-    {
-      year: "numeric",
-      month: "short",
-      day: "numeric"
-    }
-  );
-}
-
-function formatDateForFile(
-  date
-) {
-  return date
-    .toISOString()
-    .slice(
-      0,
-      10
-    );
-}
-
-function createPlaceholderAvatar() {
-  const svg = `
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="500"
-      height="600"
-      viewBox="0 0 500 600"
-    >
-      <rect
-        width="500"
-        height="600"
-        fill="#EDF8FC"
-      />
-
-      <circle
-        cx="250"
-        cy="220"
-        r="90"
-        fill="#C5E7F2"
-      />
-
-      <rect
-        x="110"
-        y="330"
-        width="280"
-        height="180"
-        rx="40"
-        fill="#A9D9E8"
-      />
-
-      <text
-        x="250"
-        y="555"
-        text-anchor="middle"
-        font-family="Arial"
-        font-size="24"
-        font-weight="700"
-        fill="#315D6D"
-      >
-        ROBLOX AVATAR
-      </text>
-    </svg>
-  `;
-
-  return (
-    "data:image/svg+xml;charset=UTF-8," +
-    encodeURIComponent(svg)
-  );
-}
-
-function escapeHTML(
-  value
-) {
-  return String(
-    value ?? ""
-  )
-    .replaceAll(
-      "&",
-      "&amp;"
-    )
-    .replaceAll(
-      "<",
-      "&lt;"
-    )
-    .replaceAll(
-      ">",
-      "&gt;"
-    )
-    .replaceAll(
-      '"',
-      "&quot;"
-    )
-    .replaceAll(
-      "'",
-      "&#039;"
-    );
-}
-
-function escapeAttribute(
-  value
-) {
-  return escapeHTML(
-    value
-  );
-}
-
-function setText(
-  id,
-  value
-) {
-  const element =
-    $(id);
-
-  if (element) {
-    element.textContent =
-      String(value);
-  }
-}
-
-/* =========================================================
-   GLOBAL API
-========================================================= */
-
-window.avatarTierList = {
-  getData: () => [
-    ...avatars
-  ],
-
-  reload: async () => {
-    await loadData();
-
-    renderAll();
+window.RobloxAvatarRating = {
+  get avatars() {
+    return avatars;
   },
 
-  openAdmin: () =>
-    openAdminPanel(),
+  reload: loadAvatars,
 
-  openAddAvatar: () =>
-    openAddAvatarModal(),
+  openAdmin: openAdminLogin,
 
-  reset: async () => {
-    if (!isAdminLoggedIn()) {
-      openAdminLogin();
-
-      return;
-    }
-
-    if (
-      !confirm(
-        "Reset seluruh avatar data?\n\nSEMUA DATA AKAN DIHAPUS."
-      )
-    ) {
-      return;
-    }
-
-    if (!ensureSupabase()) {
-      return;
-    }
-
-    try {
-      /* Hapus seluruh database */
-
-      const {
-        data,
-        error
-      } =
-        await supabaseClient
-          .from("avatars")
-          .select(
-            "id,image_path"
-          );
-
-      if (error) {
-        throw error;
-      }
-
-      const paths =
-        (data || [])
-          .map(
-            (item) =>
-              item.image_path
-          )
-          .filter(Boolean);
-
-      if (paths.length) {
-        await supabaseClient.storage
-          .from(
-            STORAGE_BUCKET
-          )
-          .remove(paths);
-      }
-
-      const {
-        error: deleteError
-      } =
-        await supabaseClient
-          .from("avatars")
-          .delete()
-          .not(
-            "id",
-            "is",
-            null
-          );
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      avatars = [];
-
-      renderAll();
-
-      alert(
-        "Seluruh avatar berhasil dihapus."
-      );
-    } catch (error) {
-      console.error(
-        "Reset error:",
-        error
-      );
-
-      alert(
-        "Gagal mereset data."
-      );
-    }
-  }
+  logout: logoutAdmin
 };
-
-/* =========================================================
-   DEBUG
-========================================================= */
-
-console.log(
-  "%c Roblox Avatar Rating ",
-  "background:#122A36;color:white;padding:6px 12px;border-radius:6px;font-weight:bold;"
-);
-
-console.log(
-  "%c Supabase database mode enabled ",
-  "background:#3ECF8E;color:#122A36;padding:6px 12px;border-radius:6px;font-weight:bold;"
-);
