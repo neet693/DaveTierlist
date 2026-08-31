@@ -3,11 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Roblox Avatar Rating Tier List by Dave Gordy" />
+
+  <meta
+    name="description"
+    content="Roblox Avatar Rating Tier List by Dave Gordy"
+  />
+
   <meta name="theme-color" content="#122A36" />
+
   <title>Roblox Avatar Tier List — Dave Gordy</title>
 
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
+
   <script>
     tailwind.config = {
       theme: {
@@ -16,17 +24,32 @@
             sans: ["Inter", "sans-serif"],
             display: ["Space Grotesk", "sans-serif"],
           },
+
           colors: {
             pastel: {
-              50:"#F7FBFD",100:"#EDF8FC",200:"#DDF1F8",300:"#C5E7F2",
-              400:"#A9D9E8",500:"#8CCBDD",600:"#70B8CE",700:"#559AAF",
-              800:"#417A8E",900:"#315D6D"
+              50:"#F7FBFD",
+              100:"#EDF8FC",
+              200:"#DDF1F8",
+              300:"#C5E7F2",
+              400:"#A9D9E8",
+              500:"#8CCBDD",
+              600:"#70B8CE",
+              700:"#559AAF",
+              800:"#417A8E",
+              900:"#315D6D"
             },
+
             ink: {
-              50:"#F5F8FA",100:"#E8EEF1",400:"#8196A1",500:"#667C87",
-              700:"#344F5D",800:"#203B48",900:"#122A36"
+              50:"#F5F8FA",
+              100:"#E8EEF1",
+              400:"#8196A1",
+              500:"#667C87",
+              700:"#344F5D",
+              800:"#203B48",
+              900:"#122A36"
             }
           },
+
           boxShadow: {
             soft:"0 10px 35px rgba(52,100,118,.07)",
             card:"0 8px 25px rgba(52,100,118,.08)",
@@ -36,253 +59,1699 @@
       }
     };
   </script>
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
+    rel="stylesheet"
+  />
 
   <style>
-    html{scroll-behavior:smooth}
-    body{font-family:"Inter",sans-serif;background:
-      radial-gradient(circle at 10% -10%,rgba(197,231,242,.65),transparent 30%),
-      radial-gradient(circle at 95% 15%,rgba(221,241,248,.8),transparent 28%),#f7fbfd;color:#122a36}
-    .font-display{font-family:"Space Grotesk",sans-serif}
-    ::selection{background:#c5e7f2;color:#122a36}
-    ::-webkit-scrollbar{width:7px;height:7px}
-    ::-webkit-scrollbar-track{background:transparent}
-    ::-webkit-scrollbar-thumb{background:#c5e7f2;border-radius:999px}
-    @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes modalIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
-    .fade-up{animation:fadeUp .45s ease both}.modal-content{animation:modalIn .2s ease both}
-    .glass{background:rgba(255,255,255,.78);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-    .soft-button{transition:transform .18s ease,background .18s ease,box-shadow .18s ease}
-    .soft-button:hover{transform:translateY(-1px)}.soft-button:active{transform:scale(.98)}
-    .filter-btn{display:inline-flex;height:38px;min-width:42px;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(18,42,54,.08);background:white;padding:0 14px;font-size:11px;font-weight:700;color:#667c87;transition:.18s ease;white-space:nowrap}
-    .filter-btn:hover{background:#edf8fc;color:#315d6d;border-color:#c5e7f2}
-    .tier-s-bg{background:linear-gradient(135deg,#a8ddec,#d7f0f7)}
-    .tier-a-bg{background:linear-gradient(135deg,#b7e1d4,#ddf2ea)}
-    .tier-b-bg{background:linear-gradient(135deg,#c5dcf0,#e2edf7)}
-    .tier-c-bg{background:linear-gradient(135deg,#d8d5ef,#eceaf7)}
-    .tier-d-bg{background:linear-gradient(135deg,#f0d5d5,#f8e7e7)}
-    .dragging{opacity:.4;transform:scale(.97)}
-    .drop-active{background:rgba(140,203,221,.12)!important;border-color:#70b8ce!important;box-shadow:0 0 0 4px rgba(140,203,221,.12)}
-    .image-drop-active{border-color:#70b8ce!important;background:#edf8fc!important;box-shadow:0 0 0 4px rgba(140,203,221,.12)}
-    .tier-card,.avatar-card{transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
-    .tier-card:hover{transform:translateY(-1px)}.avatar-card:hover{transform:translateY(-4px);box-shadow:0 15px 35px rgba(52,100,118,.12)}
-    .modal-scroll::-webkit-scrollbar{width:5px}.modal-scroll::-webkit-scrollbar-thumb{background:#c5e7f2;border-radius:20px}
-    #adminPanel{animation:fadeUp .25s ease both}
-    .admin-scroll{overscroll-behavior:contain}
-    .admin-tier-dropzone{min-height:130px}
-    .admin-avatar-card{touch-action:manipulation}
-    @media(max-width:640px){
-      .mobile-scroll{overflow-x:auto;scrollbar-width:none}.mobile-scroll::-webkit-scrollbar{display:none}
-      .admin-header-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%}
-      .admin-header-actions .logout-action{grid-column:1/-1}
-      .admin-content{padding:16px 12px 32px}
-      .admin-title-row{align-items:stretch}
-      .admin-add-button{width:100%;height:46px}
-      .admin-tier-dropzone{min-height:96px;padding:8px}
-      .admin-avatar-card{padding:10px;gap:10px;align-items:flex-start}
-      .admin-avatar-image{width:52px;height:52px}
-      .admin-avatar-actions{align-self:center}
-      .admin-avatar-actions button{width:38px;height:38px}
-      .admin-drop-hint{min-height:78px}
-      .admin-modal{max-height:calc(100dvh - 16px);border-radius:22px;padding:18px}
-      .admin-modal-actions{position:sticky;bottom:-18px;margin-left:-18px;margin-right:-18px;padding:12px 18px;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-top:1px solid #ddf1f8}
-      #adminLoginModal>div:not(.absolute){max-height:calc(100dvh - 24px);overflow-y:auto}
+    /* =========================================================
+       GLOBAL
+    ========================================================= */
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: "Inter", sans-serif;
+
+      background:
+        radial-gradient(
+          circle at 10% -10%,
+          rgba(197,231,242,.65),
+          transparent 30%
+        ),
+        radial-gradient(
+          circle at 95% 15%,
+          rgba(221,241,248,.8),
+          transparent 28%
+        ),
+        #f7fbfd;
+
+      color: #122a36;
+    }
+
+    .font-display {
+      font-family: "Space Grotesk", sans-serif;
+    }
+
+    ::selection {
+      background: #c5e7f2;
+      color: #122a36;
+    }
+
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #c5e7f2;
+      border-radius: 999px;
+    }
+
+
+    /* =========================================================
+       ANIMATIONS
+    ========================================================= */
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px) scale(.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .fade-up {
+      animation: fadeUp .45s ease both;
+    }
+
+    .modal-content {
+      animation: modalIn .2s ease both;
+    }
+
+
+    /* =========================================================
+       COMPONENTS
+    ========================================================= */
+
+    .glass {
+      background: rgba(255,255,255,.78);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .soft-button {
+      transition:
+        transform .18s ease,
+        background .18s ease,
+        box-shadow .18s ease;
+    }
+
+    .soft-button:hover {
+      transform: translateY(-1px);
+    }
+
+    .soft-button:active {
+      transform: scale(.98);
+    }
+
+    .filter-btn {
+      display: inline-flex;
+      height: 38px;
+      min-width: 42px;
+      align-items: center;
+      justify-content: center;
+
+      border-radius: 12px;
+      border: 1px solid rgba(18,42,54,.08);
+
+      background: white;
+
+      padding: 0 14px;
+
+      font-size: 11px;
+      font-weight: 700;
+
+      color: #667c87;
+
+      transition: .18s ease;
+      white-space: nowrap;
+    }
+
+    .filter-btn:hover {
+      background: #edf8fc;
+      color: #315d6d;
+      border-color: #c5e7f2;
+    }
+
+
+    /* =========================================================
+       TIER COLORS
+    ========================================================= */
+
+    .tier-s-bg {
+      background: linear-gradient(
+        135deg,
+        #a8ddec,
+        #d7f0f7
+      );
+    }
+
+    .tier-a-bg {
+      background: linear-gradient(
+        135deg,
+        #b7e1d4,
+        #ddf2ea
+      );
+    }
+
+    .tier-b-bg {
+      background: linear-gradient(
+        135deg,
+        #c5dcf0,
+        #e2edf7
+      );
+    }
+
+    .tier-c-bg {
+      background: linear-gradient(
+        135deg,
+        #d8d5ef,
+        #eceaf7
+      );
+    }
+
+    .tier-d-bg {
+      background: linear-gradient(
+        135deg,
+        #f0d5d5,
+        #f8e7e7
+      );
+    }
+
+
+    /* =========================================================
+       DRAG & DROP
+    ========================================================= */
+
+    .dragging {
+      opacity: .4;
+      transform: scale(.97);
+    }
+
+    .drop-active {
+      background: rgba(140,203,221,.12) !important;
+      border-color: #70b8ce !important;
+      box-shadow:
+        0 0 0 4px rgba(140,203,221,.12);
+    }
+
+    .image-drop-active {
+      border-color: #70b8ce !important;
+      background: #edf8fc !important;
+      box-shadow:
+        0 0 0 4px rgba(140,203,221,.12);
+    }
+
+    .tier-card,
+    .avatar-card {
+      transition:
+        transform .2s ease,
+        box-shadow .2s ease,
+        border-color .2s ease;
+    }
+
+    .tier-card:hover {
+      transform: translateY(-1px);
+    }
+
+    .avatar-card:hover {
+      transform: translateY(-4px);
+      box-shadow:
+        0 15px 35px rgba(52,100,118,.12);
+    }
+
+
+    /* =========================================================
+       MODALS
+    ========================================================= */
+
+    .modal-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .modal-scroll::-webkit-scrollbar-thumb {
+      background: #c5e7f2;
+      border-radius: 20px;
+    }
+
+
+    /* =========================================================
+       ADMIN DASHBOARD
+       
+       IMPORTANT:
+       #adminPanel becomes "flex" when opened by JS.
+       Therefore it MUST be flex-direction: column.
+    ========================================================= */
+
+    #adminPanel {
+      position: fixed !important;
+
+      inset: 0 !important;
+
+      width: 100vw !important;
+      max-width: none !important;
+
+      height: 100vh !important;
+      height: 100dvh !important;
+
+      margin: 0 !important;
+      padding: 0 !important;
+
+      overflow: hidden !important;
+
+      display: none;
+      flex-direction: column !important;
+
+      animation: fadeUp .25s ease both;
+    }
+
+    /* When JS adds .flex */
+    #adminPanel.flex {
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    /* Admin header */
+    #adminPanel > header {
+      position: relative;
+
+      width: 100% !important;
+      max-width: none !important;
+
+      height: 70px;
+      min-height: 70px;
+
+      flex: 0 0 70px;
+
+      z-index: 20;
+    }
+
+    /* Admin scroll area */
+    #adminPanel > .admin-scroll {
+      width: 100% !important;
+
+      flex: 1 1 auto;
+
+      min-width: 0;
+      min-height: 0;
+
+      overflow-y: auto;
+      overflow-x: hidden;
+
+      overscroll-behavior: contain;
+    }
+
+    /* Admin inner content */
+    #adminPanel .admin-content {
+      width: 100% !important;
+
+      max-width: 1400px;
+
+      margin-left: auto;
+      margin-right: auto;
+
+      min-width: 0;
+    }
+
+    /* Tier container */
+    #adminTierContainer {
+      width: 100%;
+      min-width: 0;
+    }
+
+    /* Admin tier */
+    #adminTierContainer > section {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .admin-tier-dropzone {
+      width: 100%;
+      min-width: 0;
+
+      min-height: 130px;
+    }
+
+    .admin-avatar-card {
+      touch-action: manipulation;
+      min-width: 0;
+    }
+
+    /* Mobile */
+    @media(max-width:640px) {
+
+      .mobile-scroll {
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .mobile-scroll::-webkit-scrollbar {
+        display: none;
+      }
+
+      .admin-header-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+
+        gap: 6px;
+
+        width: 100%;
+      }
+
+      .admin-header-actions .logout-action {
+        grid-column: 1 / -1;
+      }
+
+      .admin-title-row {
+        align-items: stretch;
+      }
+
+      .admin-add-button {
+        width: 100%;
+        height: 46px;
+      }
+
+      .admin-tier-dropzone {
+        min-height: 96px;
+        padding: 8px;
+      }
+
+      .admin-avatar-card {
+        padding: 10px;
+        gap: 10px;
+        align-items: flex-start;
+      }
+
+      .admin-avatar-image {
+        width: 52px;
+        height: 52px;
+      }
+
+      .admin-avatar-actions {
+        align-self: center;
+      }
+
+      .admin-avatar-actions button {
+        width: 38px;
+        height: 38px;
+      }
+
+      .admin-drop-hint {
+        min-height: 78px;
+      }
+
+      .admin-modal {
+        max-height: calc(100dvh - 16px);
+        border-radius: 22px;
+        padding: 18px;
+      }
+
+      .admin-modal-actions {
+        position: sticky;
+
+        bottom: -18px;
+
+        margin-left: -18px;
+        margin-right: -18px;
+
+        padding: 12px 18px;
+
+        background: rgba(255,255,255,.96);
+
+        backdrop-filter: blur(12px);
+
+        border-top: 1px solid #ddf1f8;
+      }
+
+      #adminLoginModal > div:not(.absolute) {
+        max-height: calc(100dvh - 24px);
+        overflow-y: auto;
+      }
     }
   </style>
 </head>
 
+
 <body class="min-h-screen">
+
+  <!-- Background -->
   <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-    <div class="absolute -right-48 -top-48 h-[500px] w-[500px] rounded-full bg-pastel-200/50 blur-[120px]"></div>
-    <div class="absolute -bottom-48 -left-48 h-[500px] w-[500px] rounded-full bg-pastel-300/35 blur-[120px]"></div>
+    <div
+      class="absolute -right-48 -top-48 h-[500px] w-[500px] rounded-full bg-pastel-200/50 blur-[120px]"
+    ></div>
+
+    <div
+      class="absolute -bottom-48 -left-48 h-[500px] w-[500px] rounded-full bg-pastel-300/35 blur-[120px]"
+    ></div>
   </div>
 
-  <header class="sticky top-0 z-50 border-b border-ink-100/70 bg-[#F7FBFD]/85 backdrop-blur-xl">
-    <div class="mx-auto flex h-[68px] w-[calc(100%-28px)] max-w-[1180px] items-center justify-between">
+
+  <!-- =======================================================
+       PUBLIC HEADER
+  ======================================================== -->
+
+  <header
+    class="sticky top-0 z-50 border-b border-ink-100/70 bg-[#F7FBFD]/85 backdrop-blur-xl"
+  >
+    <div
+      class="mx-auto flex h-[68px] w-[calc(100%-28px)] max-w-[1180px] items-center justify-between"
+    >
+
       <a href="#" class="group flex items-center gap-3">
-        <div class="grid h-10 w-10 place-items-center rounded-xl bg-ink-900 text-white shadow-card transition group-hover:scale-105"><span class="font-display text-lg font-bold">R</span></div>
-        <div class="leading-none"><div class="text-sm font-bold tracking-tight text-ink-900">Avatar Rating</div><div class="mt-1 text-[9px] font-bold tracking-[.18em] text-ink-400">TIER LIST</div></div>
+
+        <div
+          class="grid h-10 w-10 place-items-center rounded-xl bg-ink-900 text-white shadow-card transition group-hover:scale-105"
+        >
+          <span class="font-display text-lg font-bold">
+            R
+          </span>
+        </div>
+
+        <div class="leading-none">
+          <div class="text-sm font-bold tracking-tight text-ink-900">
+            Avatar Rating
+          </div>
+
+          <div
+            class="mt-1 text-[9px] font-bold tracking-[.18em] text-ink-400"
+          >
+            TIER LIST
+          </div>
+        </div>
+
       </a>
+
+
       <nav class="hidden items-center gap-2 md:flex">
-        <a href="#tier-list" class="rounded-xl px-4 py-2 text-xs font-semibold text-ink-500 transition hover:bg-pastel-100 hover:text-ink-900">Tier List</a>
-        <a href="#stats" class="rounded-xl px-4 py-2 text-xs font-semibold text-ink-500 transition hover:bg-pastel-100 hover:text-ink-900">Statistics</a>
+
+        <a
+          href="#tier-list"
+          class="rounded-xl px-4 py-2 text-xs font-semibold text-ink-500 transition hover:bg-pastel-100 hover:text-ink-900"
+        >
+          Tier List
+        </a>
+
+        <a
+          href="#stats"
+          class="rounded-xl px-4 py-2 text-xs font-semibold text-ink-500 transition hover:bg-pastel-100 hover:text-ink-900"
+        >
+          Statistics
+        </a>
+
       </nav>
-      <button id="adminButton" type="button" class="soft-button inline-flex h-10 items-center gap-2 rounded-xl bg-ink-900 px-4 text-[10px] font-bold text-white shadow-sm hover:bg-ink-800"><span class="text-sm">⚙</span><span>Admin</span></button>
+
+
+      <button
+        id="adminButton"
+        type="button"
+        class="soft-button inline-flex h-10 items-center gap-2 rounded-xl bg-ink-900 px-4 text-[10px] font-bold text-white shadow-sm hover:bg-ink-800"
+      >
+        <span class="text-sm">⚙</span>
+        <span>Admin</span>
+      </button>
+
     </div>
   </header>
 
+
+  <!-- =======================================================
+       PUBLIC CONTENT
+  ======================================================== -->
+
   <main>
+
+    <!-- HERO -->
     <section class="px-4 pb-16 pt-20 text-center sm:pb-20 sm:pt-28">
+
       <div class="mx-auto max-w-4xl">
-        <div class="fade-up inline-flex items-center gap-2 rounded-full border border-pastel-200 bg-white/80 px-3.5 py-1.5 text-[9px] font-bold tracking-[.14em] text-pastel-800 shadow-sm"><span class="h-1.5 w-1.5 rounded-full bg-pastel-600"></span>ROBLOX AVATAR SHOWCASE</div>
-        <h1 class="fade-up mt-7 font-display text-[clamp(48px,10vw,86px)] font-bold leading-[.94] tracking-[-.065em] text-ink-900">Roblox Avatar <span class="block text-pastel-700">Tier List</span></h1>
-        <p class="fade-up mx-auto mt-7 max-w-xl text-sm leading-7 text-ink-500 sm:text-base">See where your avatar ranks. Explore ratings, outfits, and feedback from my personal Roblox avatar reviews.</p>
+
+        <div
+          class="fade-up inline-flex items-center gap-2 rounded-full border border-pastel-200 bg-white/80 px-3.5 py-1.5 text-[9px] font-bold tracking-[.14em] text-pastel-800 shadow-sm"
+        >
+          <span class="h-1.5 w-1.5 rounded-full bg-pastel-600"></span>
+          ROBLOX AVATAR SHOWCASE
+        </div>
+
+        <h1
+          class="fade-up mt-7 font-display text-[clamp(48px,10vw,86px)] font-bold leading-[.94] tracking-[-.065em] text-ink-900"
+        >
+          Roblox Avatar
+          <span class="block text-pastel-700">
+            Tier List
+          </span>
+        </h1>
+
+        <p
+          class="fade-up mx-auto mt-7 max-w-xl text-sm leading-7 text-ink-500 sm:text-base"
+        >
+          See where your avatar ranks. Explore ratings, outfits,
+          and feedback from my personal Roblox avatar reviews.
+        </p>
+
         <div class="mt-8 flex flex-wrap justify-center gap-2">
-          <a href="#tier-list" class="soft-button inline-flex h-11 items-center gap-2 rounded-xl bg-ink-900 px-5 text-xs font-bold text-white shadow-lg hover:bg-ink-800">Explore Tier List <span>↓</span></a>
-          <a href="#stats" class="soft-button inline-flex h-11 items-center rounded-xl border border-pastel-200 bg-white px-5 text-xs font-bold text-ink-700 hover:bg-pastel-50">Statistics</a>
-        </div>
-        <div class="mx-auto mt-14 flex max-w-xl items-center justify-center rounded-2xl border border-pastel-200/80 bg-white/75 px-2 py-5 shadow-soft backdrop-blur">
-          <div class="flex min-w-[95px] flex-col items-center"><strong id="heroAvatarCount" class="font-display text-xl font-bold text-ink-900">0</strong><span class="mt-1 text-[8px] font-bold uppercase tracking-widest text-ink-400">Avatars Rated</span></div>
-          <div class="h-8 w-px bg-pastel-200"></div>
-          <div class="flex min-w-[95px] flex-col items-center"><strong class="font-display text-xl font-bold text-ink-900">S</strong><span class="mt-1 text-[8px] font-bold uppercase tracking-widest text-ink-400">Highest Tier</span></div>
-          <div class="h-8 w-px bg-pastel-200"></div>
-          <div class="flex min-w-[95px] flex-col items-center"><strong class="font-display text-xl font-bold text-ink-900">10</strong><span class="mt-1 text-[8px] font-bold uppercase tracking-widest text-ink-400">Max Score</span></div>
-        </div>
-      </div>
-    </section>
 
-    <section class="px-4 pb-20">
-      <div class="mx-auto max-w-[1180px]">
-        <div class="rounded-[28px] border border-pastel-200/70 bg-white/85 p-6 shadow-soft backdrop-blur sm:p-8">
-          <div class="mb-5 flex items-center justify-between"><div><span class="text-[9px] font-extrabold tracking-[.14em] text-pastel-700">FIND YOUR AVATAR</span><h2 class="mt-1 font-display text-2xl font-bold text-ink-900">Where do you rank?</h2></div><div class="grid h-11 w-11 place-items-center rounded-xl bg-pastel-100 text-xl text-pastel-700">⌕</div></div>
-          <div class="relative">
-            <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg text-ink-400">@</span>
-            <input id="searchInput" type="text" placeholder="Search Roblox username..." autocomplete="off" class="h-14 w-full rounded-2xl border border-pastel-200 bg-pastel-50 pl-11 pr-12 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/50" />
-            <button id="clearSearch" type="button" class="absolute right-3 top-1/2 hidden h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-pastel-200 text-lg text-ink-500 transition hover:bg-pastel-300">×</button>
+          <a
+            href="#tier-list"
+            class="soft-button inline-flex h-11 items-center gap-2 rounded-xl bg-ink-900 px-5 text-xs font-bold text-white shadow-lg hover:bg-ink-800"
+          >
+            Explore Tier List
+            <span>↓</span>
+          </a>
+
+          <a
+            href="#stats"
+            class="soft-button inline-flex h-11 items-center rounded-xl border border-pastel-200 bg-white px-5 text-xs font-bold text-ink-700 hover:bg-pastel-50"
+          >
+            Statistics
+          </a>
+
+        </div>
+
+
+        <div
+          class="mx-auto mt-14 flex max-w-xl items-center justify-center rounded-2xl border border-pastel-200/80 bg-white/75 px-2 py-5 shadow-soft backdrop-blur"
+        >
+
+          <div class="flex min-w-[95px] flex-col items-center">
+            <strong
+              id="heroAvatarCount"
+              class="font-display text-xl font-bold text-ink-900"
+            >
+              0
+            </strong>
+
+            <span
+              class="mt-1 text-[8px] font-bold uppercase tracking-widest text-ink-400"
+            >
+              Avatars Rated
+            </span>
           </div>
-          <div id="searchStatus" class="mt-3 min-h-5 text-xs text-ink-400">Search by username or display name.</div>
+
+
+          <div class="h-8 w-px bg-pastel-200"></div>
+
+
+          <div class="flex min-w-[95px] flex-col items-center">
+            <strong
+              class="font-display text-xl font-bold text-ink-900"
+            >
+              S
+            </strong>
+
+            <span
+              class="mt-1 text-[8px] font-bold uppercase tracking-widest text-ink-400"
+            >
+              Highest Tier
+            </span>
+          </div>
+
+
+          <div class="h-8 w-px bg-pastel-200"></div>
+
+
+          <div class="flex min-w-[95px] flex-col items-center">
+            <strong
+              class="font-display text-xl font-bold text-ink-900"
+            >
+              10
+            </strong>
+
+            <span
+              class="mt-1 text-[8px] font-bold uppercase tracking-widest text-ink-400"
+            >
+              Max Score
+            </span>
+          </div>
+
         </div>
+
       </div>
+
     </section>
 
-    <section id="tier-list" class="scroll-mt-20 px-4 pb-28">
+
+    <!-- SEARCH -->
+    <section class="px-4 pb-20">
+
       <div class="mx-auto max-w-[1180px]">
-        <div class="mb-7"><span class="text-[9px] font-extrabold tracking-[.14em] text-pastel-700">RANKING</span><h2 class="mt-1 font-display text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl">Avatar Tier List</h2><p class="mt-1 text-xs text-ink-400">Every avatar reviewed and ranked.</p></div>
+
+        <div
+          class="rounded-[28px] border border-pastel-200/70 bg-white/85 p-6 shadow-soft backdrop-blur sm:p-8"
+        >
+
+          <div class="mb-5 flex items-center justify-between">
+
+            <div>
+
+              <span
+                class="text-[9px] font-extrabold tracking-[.14em] text-pastel-700"
+              >
+                FIND YOUR AVATAR
+              </span>
+
+              <h2
+                class="mt-1 font-display text-2xl font-bold text-ink-900"
+              >
+                Where do you rank?
+              </h2>
+
+            </div>
+
+            <div
+              class="grid h-11 w-11 place-items-center rounded-xl bg-pastel-100 text-xl text-pastel-700"
+            >
+              ⌕
+            </div>
+
+          </div>
+
+
+          <div class="relative">
+
+            <span
+              class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg text-ink-400"
+            >
+              @
+            </span>
+
+            <input
+              id="searchInput"
+              type="text"
+              placeholder="Search Roblox username..."
+              autocomplete="off"
+              class="h-14 w-full rounded-2xl border border-pastel-200 bg-pastel-50 pl-11 pr-12 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/50"
+            />
+
+            <button
+              id="clearSearch"
+              type="button"
+              class="absolute right-3 top-1/2 hidden h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-pastel-200 text-lg text-ink-500 transition hover:bg-pastel-300"
+            >
+              ×
+            </button>
+
+          </div>
+
+
+          <div
+            id="searchStatus"
+            class="mt-3 min-h-5 text-xs text-ink-400"
+          >
+            Search by username or display name.
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- TIER LIST -->
+    <section
+      id="tier-list"
+      class="scroll-mt-20 px-4 pb-28"
+    >
+
+      <div class="mx-auto max-w-[1180px]">
+
+        <div class="mb-7">
+
+          <span
+            class="text-[9px] font-extrabold tracking-[.14em] text-pastel-700"
+          >
+            RANKING
+          </span>
+
+          <h2
+            class="mt-1 font-display text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl"
+          >
+            Avatar Tier List
+          </h2>
+
+          <p class="mt-1 text-xs text-ink-400">
+            Every avatar reviewed and ranked.
+          </p>
+
+        </div>
+
+
         <div class="mobile-scroll mb-6 flex gap-2 pb-1">
-          <button class="filter-btn bg-ink-900 text-white" data-filter="ALL">All</button><button class="filter-btn" data-filter="S">S</button><button class="filter-btn" data-filter="A">A</button><button class="filter-btn" data-filter="B">B</button><button class="filter-btn" data-filter="C">C</button><button class="filter-btn" data-filter="D">D</button>
+
+          <button
+            class="filter-btn bg-ink-900 text-white"
+            data-filter="ALL"
+          >
+            All
+          </button>
+
+          <button class="filter-btn" data-filter="S">
+            S
+          </button>
+
+          <button class="filter-btn" data-filter="A">
+            A
+          </button>
+
+          <button class="filter-btn" data-filter="B">
+            B
+          </button>
+
+          <button class="filter-btn" data-filter="C">
+            C
+          </button>
+
+          <button class="filter-btn" data-filter="D">
+            D
+          </button>
+
         </div>
-        <div id="tierContainer" class="space-y-3"></div>
-        <div id="emptyState" class="hidden rounded-2xl border border-pastel-200 bg-white/80 px-5 py-20 text-center shadow-soft">
-          <div class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-pastel-100 font-bold text-pastel-700">?</div><h3 class="mt-4 font-display text-xl font-bold text-ink-900">Avatar not found.</h3><p class="mt-1 text-xs text-ink-400">Try searching another username or display name.</p>
+
+
+        <div
+          id="tierContainer"
+          class="space-y-3"
+        ></div>
+
+
+        <div
+          id="emptyState"
+          class="hidden rounded-2xl border border-pastel-200 bg-white/80 px-5 py-20 text-center shadow-soft"
+        >
+
+          <div
+            class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-pastel-100 font-bold text-pastel-700"
+          >
+            ?
+          </div>
+
+          <h3
+            class="mt-4 font-display text-xl font-bold text-ink-900"
+          >
+            Avatar not found.
+          </h3>
+
+          <p class="mt-1 text-xs text-ink-400">
+            Try searching another username or display name.
+          </p>
+
         </div>
+
       </div>
+
     </section>
 
-    <section id="stats" class="scroll-mt-20 border-y border-pastel-200/70 bg-[#EDF6FA] px-4 py-24">
+
+    <!-- STATISTICS -->
+    <section
+      id="stats"
+      class="scroll-mt-20 border-y border-pastel-200/70 bg-[#EDF6FA] px-4 py-24"
+    >
+
       <div class="mx-auto max-w-[1180px]">
-        <div class="mx-auto mb-10 max-w-xl text-center"><span class="text-[9px] font-extrabold tracking-[.14em] text-pastel-700">THE NUMBERS</span><h2 class="mt-1 font-display text-3xl font-bold text-ink-900">Rating Statistics</h2></div>
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div class="rounded-2xl border border-pastel-200/70 bg-white/85 p-6 text-center shadow-soft"><strong id="totalAvatars" class="block font-display text-3xl font-bold text-ink-900">0</strong><span class="mt-2 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Avatars Rated</span></div>
-          <div class="rounded-2xl border border-pastel-200/70 bg-white/85 p-6 text-center shadow-soft"><strong id="sCount" class="block font-display text-3xl font-bold text-ink-900">0</strong><span class="mt-2 block text-[9px] font-bold uppercase tracking-widest text-ink-400">S Tier</span></div>
-          <div class="rounded-2xl border border-pastel-200/70 bg-white/85 p-6 text-center shadow-soft"><strong id="aCount" class="block font-display text-3xl font-bold text-ink-900">0</strong><span class="mt-2 block text-[9px] font-bold uppercase tracking-widest text-ink-400">A Tier</span></div>
-          <div class="rounded-2xl border border-pastel-200/70 bg-white/85 p-6 text-center shadow-soft"><strong id="otherCount" class="block font-display text-3xl font-bold text-ink-900">0</strong><span class="mt-2 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Other Tiers</span></div>
+
+        <div class="mx-auto mb-10 max-w-xl text-center">
+
+          <span
+            class="text-[9px] font-extrabold tracking-[.14em] text-pastel-700"
+          >
+            THE NUMBERS
+          </span>
+
+          <h2
+            class="mt-1 font-display text-3xl font-bold text-ink-900"
+          >
+            Rating Statistics
+          </h2>
+
         </div>
+
+
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+          <div
+            class="rounded-2xl border border-pastel-200/70 bg-white/85 p-6 text-center shadow-soft"
+          >
+            <strong
+              id="totalAvatars"
+              class="block font-display text-3xl font-bold text-ink-900"
+            >
+              0
+            </strong>
+
+            <span
+              class="mt-2 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+            >
+              Avatars Rated
+            </span>
+          </div>
+
+
+          <div
+            class="rounded-2xl border border-pastel-200/70 bg-white/85 p-6 text-center shadow-soft"
+          >
+            <strong
+              id="sCount"
+              class="block font-display text-3xl font-bold text-ink-900"
+            >
+              0
+            </strong>
+
+            <span
+              class="mt-2 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+            >
+              S Tier
+            </span>
+          </div>
+
+
+          <div
+            class="rounded-2xl border border-pastel-200/70 bg-white/85 p-6 text-center shadow-soft"
+          >
+            <strong
+              id="aCount"
+              class="block font-display text-3xl font-bold text-ink-900"
+            >
+              0
+            </strong>
+
+            <span
+              class="mt-2 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+            >
+              A Tier
+            </span>
+          </div>
+
+
+          <div
+            class="rounded-2xl border border-pastel-200/70 bg-white/85 p-6 text-center shadow-soft"
+          >
+            <strong
+              id="otherCount"
+              class="block font-display text-3xl font-bold text-ink-900"
+            >
+              0
+            </strong>
+
+            <span
+              class="mt-2 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+            >
+              Other Tiers
+            </span>
+          </div>
+
+        </div>
+
       </div>
+
     </section>
 
+
+    <!-- FOOTER -->
     <footer class="bg-ink-900 px-4 py-10 text-white">
-      <div class="mx-auto flex max-w-[1180px] flex-col justify-between gap-6 sm:flex-row sm:items-center">
-        <div><strong class="font-display text-sm">Roblox Avatar Rating</strong><p class="mt-1 text-[10px] text-white/40">A personal avatar rating showcase.</p></div>
-        <div class="text-right text-[10px] text-white/40"><div>© 2026</div><div class="mt-1">Build by <span class="font-semibold text-pastel-300">Dave Gordy</span></div></div>
+
+      <div
+        class="mx-auto flex max-w-[1180px] flex-col justify-between gap-6 sm:flex-row sm:items-center"
+      >
+
+        <div>
+
+          <strong class="font-display text-sm">
+            Roblox Avatar Rating
+          </strong>
+
+          <p class="mt-1 text-[10px] text-white/40">
+            A personal avatar rating showcase.
+          </p>
+
+        </div>
+
+
+        <div
+          class="text-right text-[10px] text-white/40"
+        >
+
+          <div>
+            © 2026
+          </div>
+
+          <div class="mt-1">
+            Build by
+            <span class="font-semibold text-pastel-300">
+              Dave Gordy
+            </span>
+          </div>
+
+        </div>
+
       </div>
+
     </footer>
+
   </main>
 
-  <!-- Avatar detail modal -->
-  <div id="avatarModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-ink-900/45 p-3 backdrop-blur-md">
-    <div id="modalBackdrop" class="absolute inset-0"></div>
-    <div class="modal-content relative z-10 max-h-[calc(100vh-24px)] w-full max-w-[900px] overflow-hidden rounded-[26px] bg-white shadow-floating">
-      <button id="closeModal" type="button" class="absolute right-4 top-4 z-20 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-xl text-ink-700 shadow-lg transition hover:bg-pastel-100">×</button>
-      <div class="modal-scroll grid max-h-[calc(100vh-24px)] overflow-y-auto md:grid-cols-[.9fr_1.1fr]">
-        <div class="relative h-[320px] overflow-hidden bg-pastel-100 sm:h-[430px] md:h-[550px]"><div id="modalTierBadge" class="absolute left-5 top-5 z-10 grid h-12 w-12 place-items-center rounded-2xl bg-white/90 font-display text-xl font-bold text-ink-900 shadow-lg backdrop-blur">S</div><img id="modalAvatarImage" src="" alt="Roblox Avatar" class="h-full w-full object-cover" /></div>
-        <div class="p-6 sm:p-10">
-          <span class="text-[9px] font-extrabold tracking-[.14em] text-pastel-700">AVATAR REVIEW</span><h2 id="modalUsername" class="mt-2 break-words font-display text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl"></h2><p id="modalDisplayName" class="mt-1 text-xs text-ink-400"></p>
-          <div class="my-7 flex items-baseline gap-1"><span class="mr-2 text-[9px] font-bold uppercase tracking-widest text-ink-400">Rating</span><strong id="modalScore" class="font-display text-4xl font-bold text-ink-900"></strong><small class="text-xs text-ink-400">/10</small></div>
-          <div class="border-y border-pastel-200">
-            <div class="flex items-center justify-between gap-5 border-b border-pastel-200 py-4"><span class="text-[9px] font-bold uppercase tracking-widest text-ink-400">Tier</span><strong id="modalTier" class="text-xs text-ink-900"></strong></div>
-            <div class="flex items-center justify-between gap-5 border-b border-pastel-200 py-4"><span class="text-[9px] font-bold uppercase tracking-widest text-ink-400">Outfit Code</span><div class="flex items-center gap-2"><strong id="modalOutfit" class="max-w-[180px] truncate text-xs text-ink-900"></strong><button id="copyOutfit" type="button" class="rounded-lg bg-pastel-100 px-2.5 py-1.5 text-[9px] font-bold text-pastel-800 transition hover:bg-pastel-200">Copy</button></div></div>
-            <div class="flex items-center justify-between gap-5 py-4"><span class="text-[9px] font-bold uppercase tracking-widest text-ink-400">Rated</span><strong id="modalDate" class="text-xs text-ink-900"></strong></div>
+
+  <!-- =======================================================
+       AVATAR DETAIL MODAL
+  ======================================================== -->
+
+  <div
+    id="avatarModal"
+    class="fixed inset-0 z-[100] hidden items-center justify-center bg-ink-900/45 p-3 backdrop-blur-md"
+  >
+
+    <div
+      id="modalBackdrop"
+      class="absolute inset-0"
+    ></div>
+
+    <div
+      class="modal-content relative z-10 max-h-[calc(100vh-24px)] w-full max-w-[900px] overflow-hidden rounded-[26px] bg-white shadow-floating"
+    >
+
+      <button
+        id="closeModal"
+        type="button"
+        class="absolute right-4 top-4 z-20 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-xl text-ink-700 shadow-lg transition hover:bg-pastel-100"
+      >
+        ×
+      </button>
+
+
+      <div
+        class="modal-scroll grid max-h-[calc(100vh-24px)] overflow-y-auto md:grid-cols-[.9fr_1.1fr]"
+      >
+
+        <div
+          class="relative h-[320px] overflow-hidden bg-pastel-100 sm:h-[430px] md:h-[550px]"
+        >
+
+          <div
+            id="modalTierBadge"
+            class="absolute left-5 top-5 z-10 grid h-12 w-12 place-items-center rounded-2xl bg-white/90 font-display text-xl font-bold text-ink-900 shadow-lg backdrop-blur"
+          >
+            S
           </div>
-          <div class="mt-5 rounded-2xl bg-pastel-50 p-4"><span class="text-[9px] font-extrabold tracking-widest text-pastel-700">MY COMMENT</span><p id="modalComment" class="mt-1 text-xs leading-6 text-ink-500"></p></div>
-          <a id="modalProfile" href="#" target="_blank" rel="noopener noreferrer" class="soft-button mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink-900 text-xs font-bold text-white hover:bg-ink-800">View Roblox Profile ↗</a>
+
+          <img
+            id="modalAvatarImage"
+            src=""
+            alt="Roblox Avatar"
+            class="h-full w-full object-cover"
+          />
+
         </div>
+
+
+        <div class="p-6 sm:p-10">
+
+          <span
+            class="text-[9px] font-extrabold tracking-[.14em] text-pastel-700"
+          >
+            AVATAR REVIEW
+          </span>
+
+          <h2
+            id="modalUsername"
+            class="mt-2 break-words font-display text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl"
+          ></h2>
+
+          <p
+            id="modalDisplayName"
+            class="mt-1 text-xs text-ink-400"
+          ></p>
+
+
+          <div class="my-7 flex items-baseline gap-1">
+
+            <span
+              class="mr-2 text-[9px] font-bold uppercase tracking-widest text-ink-400"
+            >
+              Rating
+            </span>
+
+            <strong
+              id="modalScore"
+              class="font-display text-4xl font-bold text-ink-900"
+            ></strong>
+
+            <small class="text-xs text-ink-400">
+              /10
+            </small>
+
+          </div>
+
+
+          <div class="border-y border-pastel-200">
+
+            <div
+              class="flex items-center justify-between gap-5 border-b border-pastel-200 py-4"
+            >
+              <span
+                class="text-[9px] font-bold uppercase tracking-widest text-ink-400"
+              >
+                Tier
+              </span>
+
+              <strong
+                id="modalTier"
+                class="text-xs text-ink-900"
+              ></strong>
+            </div>
+
+
+            <div
+              class="flex items-center justify-between gap-5 border-b border-pastel-200 py-4"
+            >
+
+              <span
+                class="text-[9px] font-bold uppercase tracking-widest text-ink-400"
+              >
+                Outfit Code
+              </span>
+
+              <div class="flex items-center gap-2">
+
+                <strong
+                  id="modalOutfit"
+                  class="max-w-[180px] truncate text-xs text-ink-900"
+                ></strong>
+
+                <button
+                  id="copyOutfit"
+                  type="button"
+                  class="rounded-lg bg-pastel-100 px-2.5 py-1.5 text-[9px] font-bold text-pastel-800 transition hover:bg-pastel-200"
+                >
+                  Copy
+                </button>
+
+              </div>
+
+            </div>
+
+
+            <div class="flex items-center justify-between gap-5 py-4">
+
+              <span
+                class="text-[9px] font-bold uppercase tracking-widest text-ink-400"
+              >
+                Rated
+              </span>
+
+              <strong
+                id="modalDate"
+                class="text-xs text-ink-900"
+              ></strong>
+
+            </div>
+
+          </div>
+
+
+          <div
+            class="mt-5 rounded-2xl bg-pastel-50 p-4"
+          >
+
+            <span
+              class="text-[9px] font-extrabold tracking-widest text-pastel-700"
+            >
+              MY COMMENT
+            </span>
+
+            <p
+              id="modalComment"
+              class="mt-1 text-xs leading-6 text-ink-500"
+            ></p>
+
+          </div>
+
+
+          <a
+            id="modalProfile"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="soft-button mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink-900 text-xs font-bold text-white hover:bg-ink-800"
+          >
+            View Roblox Profile ↗
+          </a>
+
+        </div>
+
       </div>
+
     </div>
+
   </div>
 
-  <!-- Admin login -->
-  <div id="adminLoginModal" class="fixed inset-0 z-[200] hidden items-center justify-center bg-ink-900/45 p-4 backdrop-blur-md">
-    <div id="adminLoginBackdrop" class="absolute inset-0"></div>
-    <div class="modal-content relative w-full max-w-md rounded-[26px] border border-white/80 bg-white p-7 shadow-floating sm:p-9">
-      <button id="closeAdminLogin" type="button" class="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full bg-pastel-50 text-lg text-ink-500 transition hover:bg-pastel-100">×</button>
-      <div class="grid h-12 w-12 place-items-center rounded-2xl bg-ink-900 text-xl text-white shadow-sm">⚙</div>
-      <h2 class="mt-5 font-display text-2xl font-bold text-ink-900">Admin Access</h2>
-      <p class="mt-1 text-xs leading-6 text-ink-400">Enter the administrator password to manage the avatar tier list.</p>
-      <label class="mt-6 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Password</label>
-      <input id="adminPassword" type="password" autocomplete="current-password" placeholder="Enter password..." class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40" />
-      <p id="adminError" class="mt-2 min-h-4 text-xs text-red-500"></p>
-      <div class="mt-5 flex gap-2"><button id="cancelAdmin" type="button" class="soft-button h-11 flex-1 rounded-xl border border-pastel-200 bg-white text-xs font-bold text-ink-500 hover:bg-pastel-50">Cancel</button><button id="unlockAdmin" type="button" class="soft-button h-11 flex-1 rounded-xl bg-ink-900 text-xs font-bold text-white shadow-sm hover:bg-ink-800">Unlock</button></div>
+
+  <!-- =======================================================
+       ADMIN LOGIN
+  ======================================================== -->
+
+  <div
+    id="adminLoginModal"
+    class="fixed inset-0 z-[200] hidden items-center justify-center bg-ink-900/45 p-4 backdrop-blur-md"
+  >
+
+    <div
+      id="adminLoginBackdrop"
+      class="absolute inset-0"
+    ></div>
+
+
+    <div
+      class="modal-content relative w-full max-w-md rounded-[26px] border border-white/80 bg-white p-7 shadow-floating sm:p-9"
+    >
+
+      <button
+        id="closeAdminLogin"
+        type="button"
+        class="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full bg-pastel-50 text-lg text-ink-500 transition hover:bg-pastel-100"
+      >
+        ×
+      </button>
+
+
+      <div
+        class="grid h-12 w-12 place-items-center rounded-2xl bg-ink-900 text-xl text-white shadow-sm"
+      >
+        ⚙
+      </div>
+
+
+      <h2
+        class="mt-5 font-display text-2xl font-bold text-ink-900"
+      >
+        Admin Access
+      </h2>
+
+
+      <p
+        class="mt-1 text-xs leading-6 text-ink-400"
+      >
+        Enter the administrator password to manage the avatar tier list.
+      </p>
+
+
+      <label
+        class="mt-6 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Password
+      </label>
+
+
+      <input
+        id="adminPassword"
+        type="password"
+        autocomplete="current-password"
+        placeholder="Enter password..."
+        class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"
+      />
+
+
+      <p
+        id="adminError"
+        class="mt-2 min-h-4 text-xs text-red-500"
+      ></p>
+
+
+      <div class="mt-5 flex gap-2">
+
+        <button
+          id="cancelAdmin"
+          type="button"
+          class="soft-button h-11 flex-1 rounded-xl border border-pastel-200 bg-white text-xs font-bold text-ink-500 hover:bg-pastel-50"
+        >
+          Cancel
+        </button>
+
+        <button
+          id="unlockAdmin"
+          type="button"
+          class="soft-button h-11 flex-1 rounded-xl bg-ink-900 text-xs font-bold text-white shadow-sm hover:bg-ink-800"
+        >
+          Unlock
+        </button>
+
+      </div>
+
     </div>
+
   </div>
 
-  <!-- Admin panel -->
-  <div id="adminPanel" class="fixed inset-0 z-[150] hidden bg-[#F7FBFD]">
-    <header class="sticky top-0 z-20 border-b border-pastel-200/70 bg-white/95 backdrop-blur-xl">
-      <div class="mx-auto flex min-h-[70px] max-w-[1250px] items-center justify-between gap-3 px-3 py-2 sm:px-4">
+
+  <!-- =======================================================
+       ADMIN PANEL
+  ======================================================== -->
+
+  <div
+    id="adminPanel"
+    class="fixed inset-0 z-[150] hidden h-screen w-screen flex-col overflow-hidden bg-[#F7FBFD]"
+  >
+
+    <!-- ADMIN HEADER -->
+    <header
+      class="shrink-0 border-b border-pastel-200/70 bg-white/95 backdrop-blur-xl"
+    >
+
+      <div
+        class="flex h-[70px] w-full items-center justify-between gap-3 px-4 sm:px-6"
+      >
+
+        <!-- BRAND -->
         <div class="flex min-w-0 items-center gap-3">
-          <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink-900 font-bold text-white">R</div>
-          <div class="min-w-0"><strong class="block truncate font-display text-sm text-ink-900">Admin Dashboard</strong><div class="text-[9px] font-bold tracking-widest text-pastel-700">ADMIN MODE</div></div>
+
+          <div
+            class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink-900 font-bold text-white"
+          >
+            R
+          </div>
+
+
+          <div class="min-w-0">
+
+            <strong
+              class="block truncate font-display text-sm text-ink-900"
+            >
+              Admin Dashboard
+            </strong>
+
+            <div
+              class="text-[9px] font-bold tracking-widest text-pastel-700"
+            >
+              ADMIN MODE
+            </div>
+
+          </div>
+
         </div>
-        <div class="admin-header-actions sm:flex sm:w-auto sm:gap-2">
-          <button id="exportData" type="button" class="hidden h-9 rounded-xl border border-pastel-200 bg-white px-3 text-[10px] font-bold text-ink-500 transition hover:bg-pastel-50 sm:inline-flex sm:items-center sm:justify-center">Export</button>
-          <label class="hidden h-9 cursor-pointer items-center justify-center rounded-xl border border-pastel-200 bg-white px-3 text-[10px] font-bold text-ink-500 transition hover:bg-pastel-50 sm:inline-flex">Import<input id="importData" type="file" accept=".json,application/json" class="hidden" /></label>
-          <button id="logoutAdmin" type="button" class="logout-action soft-button h-9 rounded-xl bg-ink-900 px-3 text-[10px] font-bold text-white sm:w-auto">Logout</button>
+
+
+        <!-- ACTIONS -->
+        <div
+          class="admin-header-actions flex shrink-0 items-center gap-2"
+        >
+
+          <button
+            id="exportData"
+            type="button"
+            class="hidden h-9 items-center justify-center rounded-xl border border-pastel-200 bg-white px-4 text-[10px] font-bold text-ink-500 transition hover:bg-pastel-50 sm:inline-flex"
+          >
+            Export
+          </button>
+
+
+          <label
+            class="hidden h-9 cursor-pointer items-center justify-center rounded-xl border border-pastel-200 bg-white px-4 text-[10px] font-bold text-ink-500 transition hover:bg-pastel-50 sm:inline-flex"
+          >
+            Import
+
+            <input
+              id="importData"
+              type="file"
+              accept=".json,application/json"
+              class="hidden"
+            />
+          </label>
+
+
+          <button
+            id="logoutAdmin"
+            type="button"
+            class="logout-action soft-button h-9 rounded-xl bg-ink-900 px-4 text-[10px] font-bold text-white"
+          >
+            Logout
+          </button>
+
         </div>
+
       </div>
+
     </header>
 
-    <div class="admin-scroll h-[calc(100dvh-70px)] overflow-y-auto">
-      <div class="admin-content mx-auto max-w-[1250px]">
-        <div class="admin-title-row mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div><span class="text-[9px] font-extrabold tracking-widest text-pastel-700">CONTENT MANAGEMENT</span><h1 class="mt-1 font-display text-3xl font-bold text-ink-900">Manage Tier List</h1><p class="mt-1 text-xs text-ink-400">Add avatars and drag them between tiers.</p></div>
-          <button id="addAvatarButton" type="button" class="admin-add-button soft-button h-11 rounded-xl bg-ink-900 px-5 text-xs font-bold text-white shadow-lg hover:bg-ink-800">+ Add Avatar</button>
+
+    <!-- ADMIN SCROLL AREA -->
+    <div
+      class="admin-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+    >
+
+      <div
+        class="admin-content w-full px-4 py-6 sm:px-6 lg:px-8"
+      >
+
+        <!-- TITLE -->
+        <div
+          class="admin-title-row mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"
+        >
+
+          <div>
+
+            <span
+              class="text-[9px] font-extrabold tracking-widest text-pastel-700"
+            >
+              CONTENT MANAGEMENT
+            </span>
+
+            <h1
+              class="mt-1 font-display text-3xl font-bold text-ink-900"
+            >
+              Manage Tier List
+            </h1>
+
+            <p class="mt-1 text-xs text-ink-400">
+              Add avatars and drag them between tiers.
+            </p>
+
+          </div>
+
+
+          <button
+            id="addAvatarButton"
+            type="button"
+            class="admin-add-button soft-button h-11 shrink-0 rounded-xl bg-ink-900 px-5 text-xs font-bold text-white shadow-lg hover:bg-ink-800"
+          >
+            + Add Avatar
+          </button>
+
         </div>
-        <div id="adminTierContainer" class="space-y-4"></div>
+
+
+        <!-- TIERS -->
+        <div
+          id="adminTierContainer"
+          class="w-full space-y-4"
+        ></div>
+
       </div>
+
     </div>
+
   </div>
 
-  <!-- Add/edit avatar modal -->
-  <div id="addAvatarModal" class="fixed inset-0 z-[250] hidden items-center justify-center bg-ink-900/45 p-3 backdrop-blur-md sm:p-4">
-    <div id="addAvatarBackdrop" class="absolute inset-0"></div>
-    <div class="admin-modal modal-scroll modal-content relative max-h-[calc(100dvh-16px)] w-full max-w-2xl overflow-y-auto rounded-[26px] bg-white p-5 shadow-floating sm:max-h-[calc(100vh-30px)] sm:p-8">
-      <button id="closeAddAvatar" type="button" class="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full bg-pastel-50 text-lg text-ink-500 transition hover:bg-pastel-100">×</button>
-      <div class="grid h-12 w-12 place-items-center rounded-2xl bg-ink-900 text-xl text-white">+</div>
-      <h2 class="mt-5 font-display text-2xl font-bold text-ink-900">Add Avatar</h2>
-      <p class="mt-1 text-xs text-ink-400">Fill in the viewer's Roblox information.</p>
 
-      <label class="mt-7 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Roblox Username *</label>
-      <input id="avatarUsername" type="text" autocomplete="off" placeholder="@username" class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40" />
-      <label class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Display Name</label>
-      <input id="avatarDisplayName" type="text" autocomplete="off" placeholder="Display name" class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40" />
-      <label class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Outfit Code *</label>
-      <input id="avatarOutfitCode" type="text" inputmode="numeric" autocomplete="off" placeholder="12345678" class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40" />
-      <label class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Roblox Profile URL</label>
-      <input id="avatarProfileUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://www.roblox.com/users/..." class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40" />
+  <!-- =======================================================
+       ADD / EDIT AVATAR MODAL
+  ======================================================== -->
 
-      <label class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Avatar Screenshot *</label>
-      <div id="imageDropZone" class="mt-2 cursor-pointer rounded-2xl border-2 border-dashed border-pastel-300 bg-pastel-50 p-5 text-center transition hover:bg-pastel-100 sm:p-7">
-        <input id="avatarImageInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" />
-        <div id="uploadPlaceholder"><div class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-xl text-pastel-700 shadow-sm">↑</div><p class="mt-3 text-xs font-bold text-ink-700">Drag & Drop screenshot here</p><p class="mt-1 text-[10px] text-ink-400">or click to browse</p></div>
-        <div id="imagePreviewContainer" class="hidden"><img id="imagePreview" src="" alt="Preview" class="mx-auto max-h-72 rounded-xl object-contain shadow-lg" /><p id="imageFileName" class="mt-3 truncate text-[10px] font-bold text-ink-500"></p><button id="changeImage" type="button" class="mt-2 min-h-9 px-3 text-[10px] font-bold text-pastel-700">Change Image</button></div>
+  <div
+    id="addAvatarModal"
+    class="fixed inset-0 z-[250] hidden items-center justify-center bg-ink-900/45 p-3 backdrop-blur-md sm:p-4"
+  >
+
+    <div
+      id="addAvatarBackdrop"
+      class="absolute inset-0"
+    ></div>
+
+
+    <div
+      class="admin-modal modal-scroll modal-content relative max-h-[calc(100dvh-16px)] w-full max-w-2xl overflow-y-auto rounded-[26px] bg-white p-5 shadow-floating sm:max-h-[calc(100vh-30px)] sm:p-8"
+    >
+
+      <button
+        id="closeAddAvatar"
+        type="button"
+        class="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full bg-pastel-50 text-lg text-ink-500 transition hover:bg-pastel-100"
+      >
+        ×
+      </button>
+
+
+      <div
+        class="grid h-12 w-12 place-items-center rounded-2xl bg-ink-900 text-xl text-white"
+      >
+        +
       </div>
 
-      <label class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Rating</label>
-      <input id="avatarScore" type="number" min="0" max="10" step="0.1" inputmode="decimal" placeholder="9.5" class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40" />
-      <label class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Tier</label>
-      <select id="avatarTier" class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"><option value="S">S — Exceptional</option><option value="A">A — Very Good</option><option value="B">B — Good</option><option value="C">C — Average</option><option value="D">D — Needs Improvement</option></select>
-      <label class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400">Rating Comment</label>
-      <textarea id="avatarComment" rows="4" placeholder="Write your thoughts about this avatar..." class="mt-2 w-full resize-none rounded-xl border border-pastel-200 bg-pastel-50 px-4 py-3 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"></textarea>
 
-      <div class="admin-modal-actions mt-6 flex flex-col-reverse gap-2 border-t border-pastel-200 pt-5 sm:flex-row">
-        <button id="cancelAddAvatar" type="button" class="soft-button h-11 flex-1 rounded-xl border border-pastel-200 bg-white text-xs font-bold text-ink-500 hover:bg-pastel-50">Cancel</button>
-        <button id="saveAvatar" type="button" class="soft-button h-11 flex-1 rounded-xl bg-ink-900 text-xs font-bold text-white hover:bg-ink-800">Save Avatar</button>
+      <h2
+        class="mt-5 font-display text-2xl font-bold text-ink-900"
+      >
+        Add Avatar
+      </h2>
+
+
+      <p class="mt-1 text-xs text-ink-400">
+        Fill in the viewer's Roblox information.
+      </p>
+
+
+      <!-- USERNAME -->
+      <label
+        class="mt-7 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Roblox Username *
+      </label>
+
+      <input
+        id="avatarUsername"
+        type="text"
+        autocomplete="off"
+        placeholder="@username"
+        class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"
+      />
+
+
+      <!-- DISPLAY NAME -->
+      <label
+        class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Display Name
+      </label>
+
+      <input
+        id="avatarDisplayName"
+        type="text"
+        autocomplete="off"
+        placeholder="Display name"
+        class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"
+      />
+
+
+      <!-- OUTFIT -->
+      <label
+        class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Outfit Code *
+      </label>
+
+      <input
+        id="avatarOutfitCode"
+        type="text"
+        inputmode="numeric"
+        autocomplete="off"
+        placeholder="12345678"
+        class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"
+      />
+
+
+      <!-- PROFILE -->
+      <label
+        class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Roblox Profile URL
+      </label>
+
+      <input
+        id="avatarProfileUrl"
+        type="url"
+        inputmode="url"
+        autocomplete="url"
+        placeholder="https://www.roblox.com/users/..."
+        class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"
+      />
+
+
+      <!-- IMAGE -->
+      <label
+        class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Avatar Screenshot *
+      </label>
+
+
+      <div
+        id="imageDropZone"
+        class="mt-2 cursor-pointer rounded-2xl border-2 border-dashed border-pastel-300 bg-pastel-50 p-5 text-center transition hover:bg-pastel-100 sm:p-7"
+      >
+
+        <input
+          id="avatarImageInput"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          class="hidden"
+        />
+
+
+        <div id="uploadPlaceholder">
+
+          <div
+            class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-xl text-pastel-700 shadow-sm"
+          >
+            ↑
+          </div>
+
+          <p class="mt-3 text-xs font-bold text-ink-700">
+            Drag & Drop screenshot here
+          </p>
+
+          <p class="mt-1 text-[10px] text-ink-400">
+            or click to browse
+          </p>
+
+        </div>
+
+
+        <div
+          id="imagePreviewContainer"
+          class="hidden"
+        >
+
+          <img
+            id="imagePreview"
+            src=""
+            alt="Preview"
+            class="mx-auto max-h-72 rounded-xl object-contain shadow-lg"
+          />
+
+          <p
+            id="imageFileName"
+            class="mt-3 truncate text-[10px] font-bold text-ink-500"
+          ></p>
+
+          <button
+            id="changeImage"
+            type="button"
+            class="mt-2 min-h-9 px-3 text-[10px] font-bold text-pastel-700"
+          >
+            Change Image
+          </button>
+
+        </div>
+
       </div>
+
+
+      <!-- SCORE -->
+      <label
+        class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Rating
+      </label>
+
+      <input
+        id="avatarScore"
+        type="number"
+        min="0"
+        max="10"
+        step="0.1"
+        inputmode="decimal"
+        placeholder="9.5"
+        class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"
+      />
+
+
+      <!-- TIER -->
+      <label
+        class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Tier
+      </label>
+
+      <select
+        id="avatarTier"
+        class="mt-2 h-12 w-full rounded-xl border border-pastel-200 bg-pastel-50 px-4 text-sm text-ink-900 outline-none transition focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"
+      >
+
+        <option value="S">
+          S — Exceptional
+        </option>
+
+        <option value="A">
+          A — Very Good
+        </option>
+
+        <option value="B">
+          B — Good
+        </option>
+
+        <option value="C">
+          C — Average
+        </option>
+
+        <option value="D">
+          D — Needs Improvement
+        </option>
+
+      </select>
+
+
+      <!-- COMMENT -->
+      <label
+        class="mt-5 block text-[9px] font-bold uppercase tracking-widest text-ink-400"
+      >
+        Rating Comment
+      </label>
+
+      <textarea
+        id="avatarComment"
+        rows="4"
+        placeholder="Write your thoughts about this avatar..."
+        class="mt-2 w-full resize-none rounded-xl border border-pastel-200 bg-pastel-50 px-4 py-3 text-sm text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-pastel-500 focus:bg-white focus:ring-4 focus:ring-pastel-200/40"
+      ></textarea>
+
+
+      <!-- ACTIONS -->
+      <div
+        class="admin-modal-actions mt-6 flex flex-col-reverse gap-2 border-t border-pastel-200 pt-5 sm:flex-row"
+      >
+
+        <button
+          id="cancelAddAvatar"
+          type="button"
+          class="soft-button h-11 flex-1 rounded-xl border border-pastel-200 bg-white text-xs font-bold text-ink-500 hover:bg-pastel-50"
+        >
+          Cancel
+        </button>
+
+
+        <button
+          id="saveAvatar"
+          type="button"
+          class="soft-button h-11 flex-1 rounded-xl bg-ink-900 text-xs font-bold text-white hover:bg-ink-800"
+        >
+          Save Avatar
+        </button>
+
+      </div>
+
     </div>
+
   </div>
 
+
+  <!-- JS -->
   <script src="script.js"></script>
+
 </body>
 </html>
