@@ -395,37 +395,25 @@ function clearAdminSession() {
 
 async function adminApi(
   action,
-  options = {}
+  payload = {}
 ) {
-  const {
-    method = "POST",
-    body = null,
-    isFormData = false
-  } = options;
-
-  let requestBody = body;
-  const headers = {};
-
-  if (
-    body &&
-    !isFormData
-  ) {
-    headers[
-      "Content-Type"
-    ] = "application/json";
-
-    requestBody =
-      JSON.stringify(body);
-  }
-
   const response =
     await fetch(
       "/api/admin-avatar",
       {
-        method,
-        headers,
-        credentials: "include",
-        body: requestBody
+        method: "POST",
+
+        credentials: "same-origin",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+          action,
+          ...payload
+        })
       }
     );
 
@@ -438,10 +426,7 @@ async function adminApi(
     result = {};
   }
 
-  if (
-    !response.ok ||
-    !result.success
-  ) {
+  if (!response.ok) {
     throw new Error(
       result.message ||
       `Admin API request failed (${response.status}).`
@@ -450,7 +435,6 @@ async function adminApi(
 
   return result;
 }
-
 
 /* =========================================================
    MODAL UTILITIES
