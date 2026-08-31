@@ -2,8 +2,12 @@
   "name": "roblox-avatar-tier-list",
   "version": "1.0.0",
   "private": true,
-  "description": "Roblox Avatar Rating Tier List — Vercel ready",
+  "description": "Roblox Avatar Rating Tier List by Dave Gordy",
+  "type": "module",
   "scripts": {
     "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.0"
   }
 }
