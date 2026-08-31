@@ -65,8 +65,8 @@
    CONFIG
 ========================================================= */
 
-const SUPABASE_URL = "GANTI_DENGAN_SUPABASE_URL_ANDA";
-const SUPABASE_ANON_KEY = "GANTI_DENGAN_SUPABASE_ANON_KEY_ANDA";
+const SUPABASE_URL = "https://xmukmypekafpntbwkrtu.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_zRqE9fINlvMo1WHggmU-Dg_OP5KCS9T";
 
 const SUPABASE_TABLE = "avatars";
 const SUPABASE_BUCKET = "avatars";
