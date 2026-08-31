@@ -1,80 +1,74 @@
 /* =========================================================
-   ROBLOX AVATAR RATING — SUPABASE + STORAGE
-   VERCEL READY
+   ROBLOX AVATAR RATING
+   SUPABASE + VERCEL API
+   RLS SAFE VERSION
    =========================================================
 
-   FEATURES
-   ---------------------------------------------------------
    PUBLIC
-   - Load avatars from Supabase
-   - Search
-   - Filter by tier
-   - Avatar detail modal
-   - Copy outfit code
-   - Statistics
+   ---------------------------------------------------------
+   - Read avatars using Supabase Publishable Key
 
    ADMIN
-   - Secure login through /api/admin-login
+   ---------------------------------------------------------
+   - Login through /api/admin-login
+   - Server-side authenticated admin session
    - Add avatar
    - Edit avatar
    - Delete avatar
-   - Upload image to Supabase Storage
+   - Upload image
+   - Delete image
    - Drag & drop between tiers
    - Reorder avatars
    - Import JSON
    - Export JSON
    - Logout
 
-   IMPORTANT
+   SECURITY
    ---------------------------------------------------------
-   Password is NEVER stored in this frontend code.
+   SUPABASE_PUBLISHABLE_KEY:
+     Safe for frontend.
 
-   Supabase ANON KEY is safe to expose in frontend
-   ONLY when your Supabase RLS policies are configured
-   correctly.
+   SUPABASE_SECRET_KEY:
+     NEVER put in this file.
+     Used only by Vercel server functions.
 
-   EXPECTED DATABASE TABLE
-   ---------------------------------------------------------
-   Table:
-     avatars
+   Database INSERT / UPDATE / DELETE:
+     Goes through /api/admin-avatar.
 
-   Columns:
-     id
-     username
-     display_name
-     outfit_code
-     profile_url
-     image_url
-     score
-     tier
-     comment
-     rated_at
-     sort_order
-     created_at
-     updated_at
-
-   EXPECTED STORAGE BUCKET
-   ---------------------------------------------------------
-   avatars
+   Storage upload / delete:
+     Goes through /api/admin-avatar.
 
    ========================================================= */
 
 "use strict";
 
+
 /* =========================================================
    CONFIG
 ========================================================= */
 
-const SUPABASE_URL = "https://xmukmypekafpntbwkrtu.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_zRqE9fINlvMo1WHggmU-Dg_OP5KCS9T";
+const SUPABASE_URL =
+  "https://xmukmypekafpntbwkrtu.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+  "sb_publishable_zRqE9fINlvMo1WHggmU-Dg_OP5KCS9T";
 
 const SUPABASE_TABLE = "avatars";
 const SUPABASE_BUCKET = "avatars";
 
-const ADMIN_SESSION_KEY = "roblox_avatar_admin_session_v3";
-const ADMIN_SESSION_MAX_AGE = 8 * 60 * 60 * 1000;
+const ADMIN_SESSION_KEY =
+  "roblox_avatar_admin_session_v4";
 
-const TIERS = ["S", "A", "B", "C", "D"];
+const ADMIN_SESSION_MAX_AGE =
+  8 * 60 * 60 * 1000;
+
+const TIERS = [
+  "S",
+  "A",
+  "B",
+  "C",
+  "D"
+];
 
 
 /* =========================================================
@@ -99,6 +93,8 @@ let draggedElement = null;
 let isSaving = false;
 let isLoading = false;
 
+let toastTimer = null;
+
 
 /* =========================================================
    DOM HELPERS
@@ -108,9 +104,11 @@ function $(id) {
   return document.getElementById(id);
 }
 
+
 function query(selector, parent = document) {
   return parent.querySelector(selector);
 }
+
 
 function queryAll(selector, parent = document) {
   return [...parent.querySelectorAll(selector)];
@@ -136,13 +134,18 @@ function escapeHtml(value) {
 ========================================================= */
 
 function generateId() {
-  if (window.crypto && crypto.randomUUID) {
+  if (
+    window.crypto &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
 
   return (
     Date.now().toString(36) +
-    Math.random().toString(36).substring(2, 12)
+    Math.random()
+      .toString(36)
+      .substring(2, 12)
   );
 }
 
@@ -152,7 +155,9 @@ function generateId() {
 ========================================================= */
 
 function formatDate(dateValue) {
-  if (!dateValue) return "-";
+  if (!dateValue) {
+    return "-";
+  }
 
   const date = new Date(dateValue);
 
@@ -179,7 +184,10 @@ function normalizeScore(value) {
     return 0;
   }
 
-  return Math.min(10, Math.max(0, number));
+  return Math.min(
+    10,
+    Math.max(0, number)
+  );
 }
 
 
@@ -188,11 +196,15 @@ function normalizeScore(value) {
 ========================================================= */
 
 function normalizeTier(value) {
-  const tier = String(value || "D")
+  const tier = String(
+    value || "D"
+  )
     .trim()
     .toUpperCase();
 
-  return TIERS.includes(tier) ? tier : "D";
+  return TIERS.includes(tier)
+    ? tier
+    : "D";
 }
 
 
@@ -203,51 +215,57 @@ function normalizeTier(value) {
 function initSupabase() {
   try {
     if (!window.supabase) {
-      console.error("Supabase JS library was not loaded.");
+      console.error(
+        "Supabase JS library was not loaded."
+      );
 
       showGlobalError(
-        "Supabase library gagal dimuat. Periksa koneksi internet."
+        "Supabase library gagal dimuat."
       );
 
       return false;
     }
 
-    if (
-      !SUPABASE_URL ||
-      SUPABASE_URL.includes("GANTI_DENGAN")
-    ) {
-      console.error("SUPABASE_URL has not been configured.");
+    if (!SUPABASE_URL) {
+      console.error(
+        "SUPABASE_URL has not been configured."
+      );
 
       showGlobalError(
-        "Supabase URL belum dikonfigurasi di script.js."
+        "Supabase URL belum dikonfigurasi."
       );
 
       return false;
     }
 
-    if (
-      !SUPABASE_ANON_KEY ||
-      SUPABASE_ANON_KEY.includes("GANTI_DENGAN")
-    ) {
-      console.error("SUPABASE_ANON_KEY has not been configured.");
+    if (!SUPABASE_PUBLISHABLE_KEY) {
+      console.error(
+        "SUPABASE_PUBLISHABLE_KEY has not been configured."
+      );
 
       showGlobalError(
-        "Supabase Anon Key belum dikonfigurasi di script.js."
+        "Supabase Publishable Key belum dikonfigurasi."
       );
 
       return false;
     }
 
-    supabaseClient = window.supabase.createClient(
-      SUPABASE_URL,
-      SUPABASE_ANON_KEY
+    supabaseClient =
+      window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_PUBLISHABLE_KEY
+      );
+
+    console.log(
+      "Supabase initialized with Publishable Key."
     );
-
-    console.log("Supabase initialized.");
 
     return true;
   } catch (error) {
-    console.error("Supabase initialization error:", error);
+    console.error(
+      "Supabase initialization error:",
+      error
+    );
 
     showGlobalError(
       "Gagal menginisialisasi Supabase."
@@ -265,10 +283,13 @@ function initSupabase() {
 function showGlobalError(message) {
   console.error(message);
 
-  const status = $("searchStatus");
+  const status =
+    $("searchStatus");
 
   if (status) {
-    status.textContent = message;
+    status.textContent =
+      message;
+
     status.className =
       "mt-3 min-h-5 text-xs text-red-500";
   }
@@ -277,6 +298,13 @@ function showGlobalError(message) {
 
 /* =========================================================
    ADMIN SESSION
+=========================================================
+
+   IMPORTANT:
+   localStorage is ONLY used for UI state.
+
+   Actual authentication is handled by
+   HttpOnly cookie from /api/admin-login.
 ========================================================= */
 
 function saveAdminSession() {
@@ -289,38 +317,65 @@ function saveAdminSession() {
       })
     );
   } catch (error) {
-    console.error("Unable to save admin session:", error);
+    console.error(
+      "Unable to save admin session:",
+      error
+    );
   }
 }
 
 
 function getAdminSession() {
   try {
-    const raw = localStorage.getItem(ADMIN_SESSION_KEY);
+    const raw =
+      localStorage.getItem(
+        ADMIN_SESSION_KEY
+      );
 
     if (!raw) {
       return false;
     }
 
-    const session = JSON.parse(raw);
+    const session =
+      JSON.parse(raw);
 
-    if (!session || session.authenticated !== true) {
-      localStorage.removeItem(ADMIN_SESSION_KEY);
+    if (
+      !session ||
+      session.authenticated !== true
+    ) {
+      localStorage.removeItem(
+        ADMIN_SESSION_KEY
+      );
+
       return false;
     }
 
-    const age = Date.now() - Number(session.createdAt || 0);
+    const age =
+      Date.now() -
+      Number(
+        session.createdAt || 0
+      );
 
-    if (age > ADMIN_SESSION_MAX_AGE) {
-      localStorage.removeItem(ADMIN_SESSION_KEY);
+    if (
+      age > ADMIN_SESSION_MAX_AGE
+    ) {
+      localStorage.removeItem(
+        ADMIN_SESSION_KEY
+      );
+
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error("Session error:", error);
+    console.error(
+      "Session error:",
+      error
+    );
 
-    localStorage.removeItem(ADMIN_SESSION_KEY);
+    localStorage.removeItem(
+      ADMIN_SESSION_KEY
+    );
 
     return false;
   }
@@ -328,7 +383,72 @@ function getAdminSession() {
 
 
 function clearAdminSession() {
-  localStorage.removeItem(ADMIN_SESSION_KEY);
+  localStorage.removeItem(
+    ADMIN_SESSION_KEY
+  );
+}
+
+
+/* =========================================================
+   ADMIN API REQUEST
+========================================================= */
+
+async function adminApi(
+  action,
+  options = {}
+) {
+  const {
+    method = "POST",
+    body = null,
+    isFormData = false
+  } = options;
+
+  let requestBody = body;
+  const headers = {};
+
+  if (
+    body &&
+    !isFormData
+  ) {
+    headers[
+      "Content-Type"
+    ] = "application/json";
+
+    requestBody =
+      JSON.stringify(body);
+  }
+
+  const response =
+    await fetch(
+      "/api/admin-avatar",
+      {
+        method,
+        headers,
+        credentials: "include",
+        body: requestBody
+      }
+    );
+
+  let result = {};
+
+  try {
+    result =
+      await response.json();
+  } catch {
+    result = {};
+  }
+
+  if (
+    !response.ok ||
+    !result.success
+  ) {
+    throw new Error(
+      result.message ||
+      `Admin API request failed (${response.status}).`
+    );
+  }
+
+  return result;
 }
 
 
@@ -337,41 +457,74 @@ function clearAdminSession() {
 ========================================================= */
 
 function openModal(element) {
-  if (!element) return;
+  if (!element) {
+    return;
+  }
 
-  element.classList.remove("hidden");
-  element.classList.add("flex");
+  element.classList.remove(
+    "hidden"
+  );
 
-  document.body.classList.add("overflow-hidden");
+  element.classList.add(
+    "flex"
+  );
+
+  document.body.classList.add(
+    "overflow-hidden"
+  );
 }
 
 
 function closeModal(element) {
-  if (!element) return;
+  if (!element) {
+    return;
+  }
 
-  element.classList.add("hidden");
-  element.classList.remove("flex");
+  element.classList.add(
+    "hidden"
+  );
 
-  if (
-    $("adminPanel")?.classList.contains("hidden") &&
-    $("avatarModal")?.classList.contains("hidden") &&
-    $("adminLoginModal")?.classList.contains("hidden") &&
-    $("addAvatarModal")?.classList.contains("hidden")
-  ) {
-    document.body.classList.remove("overflow-hidden");
+  element.classList.remove(
+    "flex"
+  );
+
+  const modals = [
+    $("adminPanel"),
+    $("avatarModal"),
+    $("adminLoginModal"),
+    $("addAvatarModal")
+  ];
+
+  const anyOpen =
+    modals.some(
+      modal =>
+        modal &&
+        !modal.classList.contains(
+          "hidden"
+        )
+    );
+
+  if (!anyOpen) {
+    document.body.classList.remove(
+      "overflow-hidden"
+    );
   }
 }
 
 
 /* =========================================================
-   ADMIN PANEL
+   ADMIN LOGIN
 ========================================================= */
 
 function openAdminLogin() {
-  const modal = $("adminLoginModal");
+  const modal =
+    $("adminLoginModal");
 
   if (!modal) {
-    console.error("adminLoginModal not found.");
+    console.error(
+      "adminLoginModal not found."
+    );
+
     return;
   }
 
@@ -380,8 +533,11 @@ function openAdminLogin() {
     return;
   }
 
-  const password = $("adminPassword");
-  const error = $("adminError");
+  const password =
+    $("adminPassword");
+
+  const error =
+    $("adminError");
 
   if (password) {
     password.value = "";
@@ -400,70 +556,28 @@ function openAdminLogin() {
 
 
 function closeAdminLoginModal() {
-  closeModal($("adminLoginModal"));
+  closeModal(
+    $("adminLoginModal")
+  );
 }
 
 
-function openAdminPanel() {
-  const panel = $("adminPanel");
+async function loginAdmin() {
+  const passwordInput =
+    $("adminPassword");
 
-  if (!panel) {
-    console.error("adminPanel not found.");
+  const errorElement =
+    $("adminError");
+
+  const button =
+    $("unlockAdmin");
+
+  if (!passwordInput) {
     return;
   }
 
-  /*
-   * IMPORTANT:
-   * HTML menggunakan class "hidden".
-   * CSS custom kamu menggunakan "#adminPanel.flex".
-   *
-   * Jadi kita HARUS:
-   * remove hidden
-   * add flex
-   */
-
-  panel.classList.remove("hidden");
-  panel.classList.add("flex");
-
-  document.body.classList.add("overflow-hidden");
-
-  renderAdminPanel();
-}
-
-
-function closeAdminPanel() {
-  const panel = $("adminPanel");
-
-  if (!panel) return;
-
-  panel.classList.add("hidden");
-  panel.classList.remove("flex");
-
-  document.body.classList.remove("overflow-hidden");
-}
-
-
-function logoutAdmin() {
-  clearAdminSession();
-
-  closeAdminPanel();
-
-  showToast("Logged out successfully.");
-}
-
-
-/* =========================================================
-   ADMIN LOGIN
-========================================================= */
-
-async function loginAdmin() {
-  const passwordInput = $("adminPassword");
-  const errorElement = $("adminError");
-  const button = $("unlockAdmin");
-
-  if (!passwordInput) return;
-
-  const password = passwordInput.value;
+  const password =
+    passwordInput.value;
 
   if (!password) {
     if (errorElement) {
@@ -478,7 +592,8 @@ async function loginAdmin() {
 
   if (button) {
     button.disabled = true;
-    button.textContent = "Checking...";
+    button.textContent =
+      "Checking...";
   }
 
   if (errorElement) {
@@ -486,29 +601,41 @@ async function loginAdmin() {
   }
 
   try {
-    const response = await fetch("/api/admin-login", {
-      method: "POST",
+    const response =
+      await fetch(
+        "/api/admin-login",
+        {
+          method: "POST",
 
-      headers: {
-        "Content-Type": "application/json"
-      },
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-      body: JSON.stringify({
-        password
-      })
-    });
+          credentials: "include",
+
+          body: JSON.stringify({
+            password
+          })
+        }
+      );
 
     let result = {};
 
     try {
-      result = await response.json();
+      result =
+        await response.json();
     } catch {
       result = {};
     }
 
-    if (!response.ok || !result.success) {
+    if (
+      !response.ok ||
+      !result.success
+    ) {
       throw new Error(
-        result.message || "Incorrect password."
+        result.message ||
+        "Incorrect password."
       );
     }
 
@@ -518,20 +645,107 @@ async function loginAdmin() {
 
     openAdminPanel();
 
-    showToast("Admin access granted.");
+    showToast(
+      "Admin access granted."
+    );
   } catch (error) {
-    console.error("Admin login error:", error);
+    console.error(
+      "Admin login error:",
+      error
+    );
 
     if (errorElement) {
       errorElement.textContent =
-        error.message || "Login failed.";
+        error.message ||
+        "Login failed.";
     }
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = "Unlock";
+      button.textContent =
+        "Unlock";
     }
   }
+}
+
+
+/* =========================================================
+   ADMIN PANEL
+========================================================= */
+
+function openAdminPanel() {
+  const panel =
+    $("adminPanel");
+
+  if (!panel) {
+    console.error(
+      "adminPanel not found."
+    );
+
+    return;
+  }
+
+  panel.classList.remove(
+    "hidden"
+  );
+
+  panel.classList.add(
+    "flex"
+  );
+
+  document.body.classList.add(
+    "overflow-hidden"
+  );
+
+  renderAdminPanel();
+}
+
+
+function closeAdminPanel() {
+  const panel =
+    $("adminPanel");
+
+  if (!panel) {
+    return;
+  }
+
+  panel.classList.add(
+    "hidden"
+  );
+
+  panel.classList.remove(
+    "flex"
+  );
+
+  document.body.classList.remove(
+    "overflow-hidden"
+  );
+}
+
+
+async function logoutAdmin() {
+  try {
+    await fetch(
+      "/api/admin-login",
+      {
+        method: "DELETE",
+        credentials: "include"
+      }
+    );
+  } catch (error) {
+    console.warn(
+      "Logout API warning:",
+      error
+    );
+  }
+
+  clearAdminSession();
+
+  closeAdminPanel();
+
+  showToast(
+    "Logged out successfully."
+  );
 }
 
 
@@ -551,20 +765,30 @@ async function loadAvatars() {
   isLoading = true;
 
   try {
-    const { data, error } = await supabaseClient
-      .from(SUPABASE_TABLE)
-      .select("*")
-      .order("sort_order", {
-        ascending: true
-      });
+    const {
+      data,
+      error
+    } =
+      await supabaseClient
+        .from(SUPABASE_TABLE)
+        .select("*")
+        .order(
+          "sort_order",
+          {
+            ascending: true
+          }
+        );
 
     if (error) {
       throw error;
     }
 
-    avatars = Array.isArray(data)
-      ? data.map(normalizeAvatar)
-      : [];
+    avatars =
+      Array.isArray(data)
+        ? data.map(
+            normalizeAvatar
+          )
+        : [];
 
     renderPublic();
 
@@ -572,7 +796,10 @@ async function loadAvatars() {
       renderAdminPanel();
     }
   } catch (error) {
-    console.error("Load avatars error:", error);
+    console.error(
+      "Load avatars error:",
+      error
+    );
 
     avatars = [];
 
@@ -593,7 +820,9 @@ async function loadAvatars() {
 
 function normalizeAvatar(avatar) {
   return {
-    id: avatar.id || generateId(),
+    id:
+      avatar.id ||
+      generateId(),
 
     username:
       avatar.username ||
@@ -616,10 +845,14 @@ function normalizeAvatar(avatar) {
       "",
 
     score:
-      normalizeScore(avatar.score),
+      normalizeScore(
+        avatar.score
+      ),
 
     tier:
-      normalizeTier(avatar.tier),
+      normalizeTier(
+        avatar.tier
+      ),
 
     comment:
       avatar.comment ||
@@ -631,8 +864,14 @@ function normalizeAvatar(avatar) {
       new Date().toISOString(),
 
     sort_order:
-      Number.isFinite(Number(avatar.sort_order))
-        ? Number(avatar.sort_order)
+      Number.isFinite(
+        Number(
+          avatar.sort_order
+        )
+      )
+        ? Number(
+            avatar.sort_order
+          )
         : 0,
 
     created_at:
@@ -661,34 +900,55 @@ function renderPublic() {
 ========================================================= */
 
 function getFilteredAvatars() {
-  let result = [...avatars];
+  let result = [
+    ...avatars
+  ];
 
-  if (currentFilter !== "ALL") {
-    result = result.filter(
-      avatar =>
-        normalizeTier(avatar.tier) === currentFilter
-    );
+  if (
+    currentFilter !==
+    "ALL"
+  ) {
+    result =
+      result.filter(
+        avatar =>
+          normalizeTier(
+            avatar.tier
+          ) ===
+          currentFilter
+      );
   }
 
-  const search = currentSearch
-    .trim()
-    .toLowerCase();
+  const search =
+    currentSearch
+      .trim()
+      .toLowerCase();
 
   if (search) {
-    result = result.filter(avatar => {
-      const username =
-        String(avatar.username || "")
-          .toLowerCase();
+    result =
+      result.filter(
+        avatar => {
+          const username =
+            String(
+              avatar.username ||
+              ""
+            ).toLowerCase();
 
-      const displayName =
-        String(avatar.display_name || "")
-          .toLowerCase();
+          const displayName =
+            String(
+              avatar.display_name ||
+              ""
+            ).toLowerCase();
 
-      return (
-        username.includes(search) ||
-        displayName.includes(search)
+          return (
+            username.includes(
+              search
+            ) ||
+            displayName.includes(
+              search
+            )
+          );
+        }
       );
-    });
   }
 
   return result;
@@ -700,48 +960,74 @@ function getFilteredAvatars() {
 ========================================================= */
 
 function renderTierList() {
-  const container = $("tierContainer");
-  const emptyState = $("emptyState");
+  const container =
+    $("tierContainer");
 
-  if (!container) return;
+  const emptyState =
+    $("emptyState");
+
+  if (!container) {
+    return;
+  }
 
   container.innerHTML = "";
 
-  const filtered = getFilteredAvatars();
+  const filtered =
+    getFilteredAvatars();
 
   if (!filtered.length) {
     if (emptyState) {
-      emptyState.classList.remove("hidden");
+      emptyState.classList.remove(
+        "hidden"
+      );
     }
 
     return;
   }
 
   if (emptyState) {
-    emptyState.classList.add("hidden");
+    emptyState.classList.add(
+      "hidden"
+    );
   }
 
   const groups = {};
 
-  TIERS.forEach(tier => {
-    groups[tier] = [];
-  });
-
-  filtered.forEach(avatar => {
-    groups[normalizeTier(avatar.tier)].push(avatar);
-  });
-
-  TIERS.forEach(tier => {
-    const tierAvatars = groups[tier];
-
-    if (!tierAvatars.length) {
-      return;
+  TIERS.forEach(
+    tier => {
+      groups[tier] = [];
     }
+  );
 
-    container.appendChild(
-      createPublicTier(tier, tierAvatars)
-    );
-  });
+  filtered.forEach(
+    avatar => {
+      groups[
+        normalizeTier(
+          avatar.tier
+        )
+      ].push(avatar);
+    }
+  );
+
+  TIERS.forEach(
+    tier => {
+      const tierAvatars =
+        groups[tier];
+
+      if (
+        !tierAvatars.length
+      ) {
+        return;
+      }
+
+      container.appendChild(
+        createPublicTier(
+          tier,
+          tierAvatars
+        )
+      );
+    }
+  );
 }
 
 
@@ -749,8 +1035,14 @@ function renderTierList() {
    PUBLIC TIER
 ========================================================= */
 
-function createPublicTier(tier, tierAvatars) {
-  const section = document.createElement("section");
+function createPublicTier(
+  tier,
+  tierAvatars
+) {
+  const section =
+    document.createElement(
+      "section"
+    );
 
   section.className =
     "tier-card overflow-hidden rounded-2xl border border-pastel-200/70 bg-white/80 shadow-soft";
@@ -771,7 +1063,8 @@ function createPublicTier(tier, tierAvatars) {
         </div>
 
         <div class="text-[9px] font-bold uppercase tracking-widest text-ink-500">
-          ${tierAvatars.length} avatar${tierAvatars.length !== 1 ? "s" : ""}
+          ${tierAvatars.length}
+          avatar${tierAvatars.length !== 1 ? "s" : ""}
         </div>
       </div>
 
@@ -779,7 +1072,9 @@ function createPublicTier(tier, tierAvatars) {
 
     <div class="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
       ${tierAvatars
-        .map(createPublicAvatarCard)
+        .map(
+          createPublicAvatarCard
+        )
         .join("")}
     </div>
   `;
@@ -792,7 +1087,9 @@ function createPublicTier(tier, tierAvatars) {
    PUBLIC AVATAR CARD
 ========================================================= */
 
-function createPublicAvatarCard(avatar) {
+function createPublicAvatarCard(
+  avatar
+) {
   const image =
     avatar.image_url ||
     createPlaceholderAvatar();
@@ -801,25 +1098,33 @@ function createPublicAvatarCard(avatar) {
     <button
       type="button"
       class="avatar-card group overflow-hidden rounded-2xl border border-pastel-200/70 bg-white text-left shadow-sm"
-      data-avatar-id="${escapeHtml(avatar.id)}"
+      data-avatar-id="${escapeHtml(
+        avatar.id
+      )}"
     >
 
       <div class="relative aspect-square overflow-hidden bg-pastel-100">
 
         <img
           src="${escapeHtml(image)}"
-          alt="${escapeHtml(avatar.username)}"
+          alt="${escapeHtml(
+            avatar.username
+          )}"
           loading="lazy"
           class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
           onerror="this.src='${createPlaceholderAvatar()}'"
         >
 
         <div class="absolute left-2 top-2 grid h-8 w-8 place-items-center rounded-lg bg-white/90 font-display text-xs font-bold text-ink-900 shadow-sm backdrop-blur">
-          ${escapeHtml(avatar.tier)}
+          ${escapeHtml(
+            avatar.tier
+          )}
         </div>
 
         <div class="absolute bottom-2 right-2 rounded-lg bg-ink-900/90 px-2 py-1 text-[9px] font-bold text-white">
-          ${escapeHtml(avatar.score)}
+          ${escapeHtml(
+            avatar.score
+          )}
         </div>
 
       </div>
@@ -828,12 +1133,17 @@ function createPublicAvatarCard(avatar) {
 
         <div class="truncate text-xs font-bold text-ink-900">
           @${escapeHtml(
-            String(avatar.username).replace(/^@/, "")
+            String(
+              avatar.username
+            ).replace(/^@/, "")
           )}
         </div>
 
         <div class="mt-1 truncate text-[9px] text-ink-400">
-          ${escapeHtml(avatar.display_name || "Roblox Avatar")}
+          ${escapeHtml(
+            avatar.display_name ||
+            "Roblox Avatar"
+          )}
         </div>
 
       </div>
@@ -882,7 +1192,10 @@ function getTierName(tier) {
     D: "Needs Improvement"
   };
 
-  return names[tier] || tier;
+  return (
+    names[tier] ||
+    tier
+  );
 }
 
 
@@ -895,7 +1208,10 @@ function getTierColorClass(tier) {
     D: "tier-d-bg"
   };
 
-  return classes[tier] || classes.D;
+  return (
+    classes[tier] ||
+    classes.D
+  );
 }
 
 
@@ -904,56 +1220,97 @@ function getTierColorClass(tier) {
 ========================================================= */
 
 function updateStatistics() {
-  const total = avatars.length;
+  const total =
+    avatars.length;
 
-  const s = avatars.filter(
-    avatar => normalizeTier(avatar.tier) === "S"
-  ).length;
+  const s =
+    avatars.filter(
+      avatar =>
+        normalizeTier(
+          avatar.tier
+        ) === "S"
+    ).length;
 
-  const a = avatars.filter(
-    avatar => normalizeTier(avatar.tier) === "A"
-  ).length;
+  const a =
+    avatars.filter(
+      avatar =>
+        normalizeTier(
+          avatar.tier
+        ) === "A"
+    ).length;
 
-  const other = total - s - a;
+  const other =
+    total - s - a;
 
-  setText("heroAvatarCount", total);
-  setText("totalAvatars", total);
-  setText("sCount", s);
-  setText("aCount", a);
-  setText("otherCount", other);
+  setText(
+    "heroAvatarCount",
+    total
+  );
+
+  setText(
+    "totalAvatars",
+    total
+  );
+
+  setText(
+    "sCount",
+    s
+  );
+
+  setText(
+    "aCount",
+    a
+  );
+
+  setText(
+    "otherCount",
+    other
+  );
 }
 
 
-function setText(id, value) {
+function setText(
+  id,
+  value
+) {
   const element = $(id);
 
   if (element) {
-    element.textContent = String(value);
+    element.textContent =
+      String(value);
   }
 }
 
 
 /* =========================================================
-   AVATAR DETAIL MODAL
+   AVATAR DETAIL
 ========================================================= */
 
 function openAvatarModal(id) {
-  const avatar = avatars.find(
-    item => String(item.id) === String(id)
-  );
+  const avatar =
+    avatars.find(
+      item =>
+        String(item.id) ===
+        String(id)
+    );
 
-  if (!avatar) return;
+  if (!avatar) {
+    return;
+  }
 
   setText(
     "modalUsername",
     "@" +
-      String(avatar.username || "")
-        .replace(/^@/, "")
+      String(
+        avatar.username ||
+        ""
+      ).replace(/^@/, "")
   );
 
   setText(
     "modalDisplayName",
-    avatar.display_name || ""
+    avatar.display_name ||
+      ""
   );
 
   setText(
@@ -963,7 +1320,9 @@ function openAvatarModal(id) {
 
   setText(
     "modalTier",
-    `${avatar.tier} — ${getTierName(avatar.tier)}`
+    `${avatar.tier} — ${getTierName(
+      avatar.tier
+    )}`
   );
 
   setText(
@@ -973,20 +1332,25 @@ function openAvatarModal(id) {
 
   setText(
     "modalOutfit",
-    avatar.outfit_code || "-"
+    avatar.outfit_code ||
+      "-"
   );
 
   setText(
     "modalDate",
-    formatDate(avatar.rated_at)
+    formatDate(
+      avatar.rated_at
+    )
   );
 
   setText(
     "modalComment",
-    avatar.comment || "No comment."
+    avatar.comment ||
+      "No comment."
   );
 
-  const image = $("modalAvatarImage");
+  const image =
+    $("modalAvatarImage");
 
   if (image) {
     image.src =
@@ -994,10 +1358,13 @@ function openAvatarModal(id) {
       createPlaceholderAvatar();
 
     image.alt =
-      `Roblox Avatar ${avatar.username}`;
+      `Roblox Avatar ${
+        avatar.username
+      }`;
   }
 
-  const profile = $("modalProfile");
+  const profile =
+    $("modalProfile");
 
   if (profile) {
     profile.href =
@@ -1007,20 +1374,28 @@ function openAvatarModal(id) {
       );
   }
 
-  const copyButton = $("copyOutfit");
+  const copyButton =
+    $("copyOutfit");
 
   if (copyButton) {
     copyButton.dataset.outfit =
-      avatar.outfit_code || "";
+      avatar.outfit_code ||
+      "";
   }
 
-  openModal($("avatarModal"));
+  openModal(
+    $("avatarModal")
+  );
 }
 
 
-function buildRobloxProfileUrl(username) {
+function buildRobloxProfileUrl(
+  username
+) {
   const cleanUsername =
-    String(username || "")
+    String(
+      username || ""
+    )
       .replace(/^@/, "")
       .trim();
 
@@ -1030,13 +1405,17 @@ function buildRobloxProfileUrl(username) {
 
   return (
     "https://www.roblox.com/search/users?keyword=" +
-    encodeURIComponent(cleanUsername)
+    encodeURIComponent(
+      cleanUsername
+    )
   );
 }
 
 
 function closeAvatarModal() {
-  closeModal($("avatarModal"));
+  closeModal(
+    $("avatarModal")
+  );
 }
 
 
@@ -1045,14 +1424,22 @@ function closeAvatarModal() {
 ========================================================= */
 
 async function copyOutfit() {
-  const button = $("copyOutfit");
+  const button =
+    $("copyOutfit");
 
-  if (!button) return;
+  if (!button) {
+    return;
+  }
 
-  const outfit = button.dataset.outfit || "";
+  const outfit =
+    button.dataset.outfit ||
+    "";
 
   if (!outfit) {
-    showToast("No outfit code available.");
+    showToast(
+      "No outfit code available."
+    );
+
     return;
   }
 
@@ -1061,15 +1448,22 @@ async function copyOutfit() {
       String(outfit)
     );
 
-    button.textContent = "Copied!";
+    button.textContent =
+      "Copied!";
 
     setTimeout(() => {
-      button.textContent = "Copy";
+      button.textContent =
+        "Copy";
     }, 1200);
   } catch (error) {
-    console.error("Copy error:", error);
+    console.error(
+      "Copy error:",
+      error
+    );
 
-    showToast("Unable to copy outfit code.");
+    showToast(
+      "Unable to copy outfit code."
+    );
   }
 }
 
@@ -1079,29 +1473,43 @@ async function copyOutfit() {
 ========================================================= */
 
 function renderAdminPanel() {
-  const container = $("adminTierContainer");
+  const container =
+    $("adminTierContainer");
 
-  if (!container) return;
+  if (!container) {
+    return;
+  }
 
   container.innerHTML = "";
 
-  TIERS.forEach(tier => {
-    const tierAvatars =
-      avatars
-        .filter(
-          avatar =>
-            normalizeTier(avatar.tier) === tier
-        )
-        .sort(
-          (a, b) =>
-            Number(a.sort_order || 0) -
-            Number(b.sort_order || 0)
-        );
+  TIERS.forEach(
+    tier => {
+      const tierAvatars =
+        avatars
+          .filter(
+            avatar =>
+              normalizeTier(
+                avatar.tier
+              ) === tier
+          )
+          .sort(
+            (a, b) =>
+              Number(
+                a.sort_order || 0
+              ) -
+              Number(
+                b.sort_order || 0
+              )
+          );
 
-    container.appendChild(
-      createAdminTier(tier, tierAvatars)
-    );
-  });
+      container.appendChild(
+        createAdminTier(
+          tier,
+          tierAvatars
+        )
+      );
+    }
+  );
 }
 
 
@@ -1109,16 +1517,25 @@ function renderAdminPanel() {
    ADMIN TIER
 ========================================================= */
 
-function createAdminTier(tier, tierAvatars) {
-  const section = document.createElement("section");
+function createAdminTier(
+  tier,
+  tierAvatars
+) {
+  const section =
+    document.createElement(
+      "section"
+    );
 
   section.className =
     "overflow-hidden rounded-2xl border border-pastel-200/70 bg-white shadow-soft";
 
-  section.dataset.tier = tier;
+  section.dataset.tier =
+    tier;
 
   section.innerHTML = `
-    <div class="flex items-center justify-between gap-3 ${getTierColorClass(tier)} px-4 py-3 sm:px-5">
+    <div class="flex items-center justify-between gap-3 ${getTierColorClass(
+      tier
+    )} px-4 py-3 sm:px-5">
 
       <div class="flex min-w-0 items-center gap-3">
 
@@ -1129,11 +1546,19 @@ function createAdminTier(tier, tierAvatars) {
         <div class="min-w-0">
 
           <div class="font-display text-sm font-bold text-ink-900">
-            ${escapeHtml(getTierName(tier))}
+            ${escapeHtml(
+              getTierName(tier)
+            )}
           </div>
 
           <div class="text-[9px] font-bold uppercase tracking-widest text-ink-500">
-            ${tierAvatars.length} avatar${tierAvatars.length !== 1 ? "s" : ""}
+            ${tierAvatars.length}
+            avatar${
+              tierAvatars.length !==
+              1
+                ? "s"
+                : ""
+            }
           </div>
 
         </div>
@@ -1148,18 +1573,24 @@ function createAdminTier(tier, tierAvatars) {
 
     <div
       class="admin-tier-dropzone grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3"
-      data-tier="${escapeHtml(tier)}"
+      data-tier="${escapeHtml(
+        tier
+      )}"
     >
 
       ${
         tierAvatars.length
           ? tierAvatars
-              .map(createAdminAvatarCard)
+              .map(
+                createAdminAvatarCard
+              )
               .join("")
           : `
             <div
               class="admin-drop-hint col-span-full flex min-h-[100px] items-center justify-center rounded-2xl border-2 border-dashed border-pastel-200 bg-pastel-50 px-5 text-center text-[10px] font-semibold text-ink-400"
-              data-empty-tier="${escapeHtml(tier)}"
+              data-empty-tier="${escapeHtml(
+                tier
+              )}"
             >
               Drop avatars here
             </div>
@@ -1177,7 +1608,9 @@ function createAdminTier(tier, tierAvatars) {
    ADMIN AVATAR CARD
 ========================================================= */
 
-function createAdminAvatarCard(avatar) {
+function createAdminAvatarCard(
+  avatar
+) {
   const image =
     avatar.image_url ||
     createPlaceholderAvatar();
@@ -1186,36 +1619,49 @@ function createAdminAvatarCard(avatar) {
     <article
       class="admin-avatar-card group flex min-w-0 cursor-grab items-center gap-3 rounded-2xl border border-pastel-200/70 bg-white p-3 shadow-sm transition hover:shadow-card"
       draggable="true"
-      data-avatar-id="${escapeHtml(avatar.id)}"
+      data-avatar-id="${escapeHtml(
+        avatar.id
+      )}"
     >
 
       <img
         src="${escapeHtml(image)}"
-        alt="${escapeHtml(avatar.username)}"
+        alt="${escapeHtml(
+          avatar.username
+        )}"
         class="admin-avatar-image h-16 w-16 shrink-0 rounded-xl bg-pastel-100 object-cover"
-        onerror="this.src='${createPlaceholderAvatar()}'"
+        onerror="this.src='${createPlaceholderAvatar()}'
       >
 
       <div class="min-w-0 flex-1">
 
         <div class="truncate text-xs font-bold text-ink-900">
           @${escapeHtml(
-            String(avatar.username).replace(/^@/, "")
+            String(
+              avatar.username
+            ).replace(/^@/, "")
           )}
         </div>
 
         <div class="mt-1 truncate text-[9px] text-ink-400">
-          ${escapeHtml(avatar.display_name || "-")}
+          ${escapeHtml(
+            avatar.display_name ||
+            "-"
+          )}
         </div>
 
         <div class="mt-2 flex items-center gap-2">
 
           <span class="rounded-lg bg-pastel-100 px-2 py-1 text-[9px] font-bold text-pastel-800">
-            ${escapeHtml(avatar.tier)}
+            ${escapeHtml(
+              avatar.tier
+            )}
           </span>
 
           <span class="text-[9px] font-bold text-ink-500">
-            ${escapeHtml(avatar.score)}/10
+            ${escapeHtml(
+              avatar.score
+            )}/10
           </span>
 
         </div>
@@ -1227,7 +1673,9 @@ function createAdminAvatarCard(avatar) {
         <button
           type="button"
           class="edit-avatar-button grid h-8 w-8 place-items-center rounded-lg bg-pastel-50 text-xs text-ink-500 transition hover:bg-pastel-100"
-          data-avatar-id="${escapeHtml(avatar.id)}"
+          data-avatar-id="${escapeHtml(
+            avatar.id
+          )}"
           title="Edit"
         >
           ✎
@@ -1236,7 +1684,9 @@ function createAdminAvatarCard(avatar) {
         <button
           type="button"
           class="delete-avatar-button grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-xs text-red-500 transition hover:bg-red-100"
-          data-avatar-id="${escapeHtml(avatar.id)}"
+          data-avatar-id="${escapeHtml(
+            avatar.id
+          )}"
           title="Delete"
         >
           ×
@@ -1259,13 +1709,18 @@ function openAddAvatarModal() {
   resetAvatarForm();
 
   const title =
-    query("#addAvatarModal h2");
+    query(
+      "#addAvatarModal h2"
+    );
 
   const description =
-    query("#addAvatarModal p");
+    query(
+      "#addAvatarModal p"
+    );
 
   if (title) {
-    title.textContent = "Add Avatar";
+    title.textContent =
+      "Add Avatar";
   }
 
   if (description) {
@@ -1273,25 +1728,36 @@ function openAddAvatarModal() {
       "Fill in the viewer's Roblox information.";
   }
 
-  const saveButton = $("saveAvatar");
+  const saveButton =
+    $("saveAvatar");
 
   if (saveButton) {
     saveButton.textContent =
       "Save Avatar";
   }
 
-  openModal($("addAvatarModal"));
+  openModal(
+    $("addAvatarModal")
+  );
 }
 
 
-function openEditAvatarModal(id) {
-  const avatar = avatars.find(
-    item => String(item.id) === String(id)
-  );
+function openEditAvatarModal(
+  id
+) {
+  const avatar =
+    avatars.find(
+      item =>
+        String(item.id) ===
+        String(id)
+    );
 
-  if (!avatar) return;
+  if (!avatar) {
+    return;
+  }
 
-  editingAvatarId = avatar.id;
+  editingAvatarId =
+    avatar.id;
 
   resetImageState();
 
@@ -1338,13 +1804,18 @@ function openEditAvatarModal(id) {
   }
 
   const title =
-    query("#addAvatarModal h2");
+    query(
+      "#addAvatarModal h2"
+    );
 
   const description =
-    query("#addAvatarModal p");
+    query(
+      "#addAvatarModal p"
+    );
 
   if (title) {
-    title.textContent = "Edit Avatar";
+    title.textContent =
+      "Edit Avatar";
   }
 
   if (description) {
@@ -1352,19 +1823,24 @@ function openEditAvatarModal(id) {
       "Update this avatar's information.";
   }
 
-  const saveButton = $("saveAvatar");
+  const saveButton =
+    $("saveAvatar");
 
   if (saveButton) {
     saveButton.textContent =
       "Save Changes";
   }
 
-  openModal($("addAvatarModal"));
+  openModal(
+    $("addAvatarModal")
+  );
 }
 
 
 function closeAddAvatarModal() {
-  closeModal($("addAvatarModal"));
+  closeModal(
+    $("addAvatarModal")
+  );
 
   editingAvatarId = null;
 
@@ -1376,11 +1852,15 @@ function closeAddAvatarModal() {
    FORM
 ========================================================= */
 
-function setInputValue(id, value) {
+function setInputValue(
+  id,
+  value
+) {
   const element = $(id);
 
   if (element) {
-    element.value = value ?? "";
+    element.value =
+      value ?? "";
   }
 }
 
@@ -1446,7 +1926,8 @@ function resetImageState() {
       selectedImagePreviewUrl
     );
 
-    selectedImagePreviewUrl = null;
+    selectedImagePreviewUrl =
+      null;
   }
 
   const input =
@@ -1463,11 +1944,15 @@ function resetImageState() {
     $("imagePreviewContainer");
 
   if (placeholder) {
-    placeholder.classList.remove("hidden");
+    placeholder.classList.remove(
+      "hidden"
+    );
   }
 
   if (previewContainer) {
-    previewContainer.classList.add("hidden");
+    previewContainer.classList.add(
+      "hidden"
+    );
   }
 
   const preview =
@@ -1498,11 +1983,15 @@ function showExistingImage(
     $("imagePreview");
 
   if (placeholder) {
-    placeholder.classList.add("hidden");
+    placeholder.classList.add(
+      "hidden"
+    );
   }
 
   if (previewContainer) {
-    previewContainer.classList.remove("hidden");
+    previewContainer.classList.remove(
+      "hidden"
+    );
   }
 
   if (preview) {
@@ -1517,7 +2006,9 @@ function showExistingImage(
 
 
 function handleImageFile(file) {
-  if (!file) return;
+  if (!file) {
+    return;
+  }
 
   const allowedTypes = [
     "image/png",
@@ -1525,7 +2016,11 @@ function handleImageFile(file) {
     "image/webp"
   ];
 
-  if (!allowedTypes.includes(file.type)) {
+  if (
+    !allowedTypes.includes(
+      file.type
+    )
+  ) {
     showToast(
       "Only PNG, JPG, and WebP images are allowed."
     );
@@ -1544,7 +2039,8 @@ function handleImageFile(file) {
     return;
   }
 
-  selectedImageFile = file;
+  selectedImageFile =
+    file;
 
   if (selectedImagePreviewUrl) {
     URL.revokeObjectURL(
@@ -1553,7 +2049,9 @@ function handleImageFile(file) {
   }
 
   selectedImagePreviewUrl =
-    URL.createObjectURL(file);
+    URL.createObjectURL(
+      file
+    );
 
   const placeholder =
     $("uploadPlaceholder");
@@ -1565,11 +2063,15 @@ function handleImageFile(file) {
     $("imagePreview");
 
   if (placeholder) {
-    placeholder.classList.add("hidden");
+    placeholder.classList.add(
+      "hidden"
+    );
   }
 
   if (previewContainer) {
-    previewContainer.classList.remove("hidden");
+    previewContainer.classList.remove(
+      "hidden"
+    );
   }
 
   if (preview) {
@@ -1585,184 +2087,52 @@ function handleImageFile(file) {
 
 
 /* =========================================================
-   STORAGE
-========================================================= */
-
-function createStoragePath(file, avatarId) {
-  const extension =
-    getFileExtension(file.name);
-
-  return (
-    `${avatarId}/avatar-${Date.now()}.${extension}`
-  );
-}
-
-
-function getFileExtension(filename) {
-  const clean =
-    String(filename || "")
-      .split("?")[0]
-      .split("#")[0];
-
-  const parts =
-    clean.split(".");
-
-  if (parts.length < 2) {
-    return "jpg";
-  }
-
-  const extension =
-    parts.pop()
-      .toLowerCase();
-
-  const allowed = [
-    "jpg",
-    "jpeg",
-    "png",
-    "webp"
-  ];
-
-  return allowed.includes(extension)
-    ? extension
-    : "jpg";
-}
-
-
-async function uploadAvatarImage(file, avatarId) {
-  if (!supabaseClient) {
-    throw new Error(
-      "Supabase is not initialized."
-    );
-  }
-
-  const path =
-    createStoragePath(
-      file,
-      avatarId
-    );
-
-  const { error } =
-    await supabaseClient
-      .storage
-      .from(SUPABASE_BUCKET)
-      .upload(
-        path,
-        file,
-        {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type
-        }
-      );
-
-  if (error) {
-    throw error;
-  }
-
-  const { data } =
-    supabaseClient
-      .storage
-      .from(SUPABASE_BUCKET)
-      .getPublicUrl(path);
-
-  return {
-    url: data.publicUrl,
-    path
-  };
-}
-
-
-async function deleteStorageFile(path) {
-  if (!path || !supabaseClient) {
-    return;
-  }
-
-  try {
-    const { error } =
-      await supabaseClient
-        .storage
-        .from(SUPABASE_BUCKET)
-        .remove([path]);
-
-    if (error) {
-      console.warn(
-        "Storage delete warning:",
-        error
-      );
-    }
-  } catch (error) {
-    console.warn(
-      "Storage delete error:",
-      error
-    );
-  }
-}
-
-
-function extractStoragePathFromUrl(url) {
-  if (!url) return null;
-
-  try {
-    const marker =
-      `/storage/v1/object/public/${SUPABASE_BUCKET}/`;
-
-    const index =
-      url.indexOf(marker);
-
-    if (index === -1) {
-      return null;
-    }
-
-    return decodeURIComponent(
-      url.substring(
-        index + marker.length
-      )
-    );
-  } catch {
-    return null;
-  }
-}
-
-
-/* =========================================================
    SAVE AVATAR
 ========================================================= */
 
 async function saveAvatar() {
-  if (isSaving) return;
-
-  if (!supabaseClient) {
-    showToast(
-      "Supabase belum terhubung."
-    );
-
+  if (isSaving) {
     return;
   }
 
   const username =
-    getInputValue("avatarUsername");
+    getInputValue(
+      "avatarUsername"
+    );
 
   const displayName =
-    getInputValue("avatarDisplayName");
+    getInputValue(
+      "avatarDisplayName"
+    );
 
   const outfitCode =
-    getInputValue("avatarOutfitCode");
+    getInputValue(
+      "avatarOutfitCode"
+    );
 
   const profileUrl =
-    getInputValue("avatarProfileUrl");
+    getInputValue(
+      "avatarProfileUrl"
+    );
 
   const score =
     normalizeScore(
-      getInputValue("avatarScore")
+      getInputValue(
+        "avatarScore"
+      )
     );
 
   const tier =
     normalizeTier(
-      getInputValue("avatarTier")
+      getInputValue(
+        "avatarTier"
+      )
     );
 
   const comment =
-    getInputValue("avatarComment");
+    getInputValue(
+      "avatarComment"
+    );
 
   if (!username) {
     showToast(
@@ -1784,7 +2154,10 @@ async function saveAvatar() {
     return;
   }
 
-  if (!editingAvatarId && !selectedImageFile) {
+  if (
+    !editingAvatarId &&
+    !selectedImageFile
+  ) {
     showToast(
       "Avatar screenshot is required."
     );
@@ -1799,146 +2172,149 @@ async function saveAvatar() {
 
   if (button) {
     button.disabled = true;
-    button.textContent = "Saving...";
+
+    button.textContent =
+      "Saving...";
   }
 
   try {
-    let avatarId =
+    const avatarId =
       editingAvatarId ||
       generateId();
 
-    let existingAvatar = null;
+    const existingAvatar =
+      editingAvatarId
+        ? avatars.find(
+            avatar =>
+              String(
+                avatar.id
+              ) ===
+              String(
+                editingAvatarId
+              )
+          )
+        : null;
 
-    if (editingAvatarId) {
-      existingAvatar =
-        avatars.find(
-          avatar =>
-            String(avatar.id) ===
-            String(editingAvatarId)
-        );
-    }
+    const formData =
+      new FormData();
 
-    let imageUrl =
-      existingAvatar?.image_url ||
-      "";
+    formData.append(
+      "action",
+      "save"
+    );
 
-    let oldStoragePath = null;
+    formData.append(
+      "id",
+      avatarId
+    );
 
-    if (
-      selectedImageFile
-    ) {
-      if (existingAvatar?.image_url) {
-        oldStoragePath =
-          extractStoragePathFromUrl(
-            existingAvatar.image_url
-          );
-      }
+    formData.append(
+      "username",
+      username.replace(
+        /^@/,
+        ""
+      )
+    );
 
-      const uploaded =
-        await uploadAvatarImage(
-          selectedImageFile,
-          avatarId
-        );
+    formData.append(
+      "display_name",
+      displayName
+    );
 
-      imageUrl =
-        uploaded.url;
-    }
+    formData.append(
+      "outfit_code",
+      outfitCode
+    );
 
-    const payload = {
-      id: avatarId,
-
-      username:
-        username.replace(/^@/, ""),
-
-      display_name:
-        displayName,
-
-      outfit_code:
-        outfitCode,
-
-      profile_url:
-        profileUrl ||
-        buildRobloxProfileUrl(username),
-
-      image_url:
-        imageUrl,
-
-      score,
-
-      tier,
-
-      comment,
-
-      rated_at:
-        existingAvatar?.rated_at ||
-        new Date().toISOString(),
-
-      sort_order:
-        existingAvatar?.sort_order ??
-        getNextSortOrder(tier),
-
-      updated_at:
-        new Date().toISOString()
-    };
-
-    if (!existingAvatar) {
-      payload.created_at =
-        new Date().toISOString();
-    }
-
-    const { data, error } =
-      await supabaseClient
-        .from(SUPABASE_TABLE)
-        .upsert(
-          payload,
-          {
-            onConflict: "id"
-          }
+    formData.append(
+      "profile_url",
+      profileUrl ||
+        buildRobloxProfileUrl(
+          username
         )
-        .select()
-        .single();
+    );
 
-    if (error) {
-      throw error;
-    }
+    formData.append(
+      "score",
+      String(score)
+    );
 
-    /*
-     * Delete old image ONLY after
-     * database save succeeded.
-     */
-    if (
-      selectedImageFile &&
-      oldStoragePath
-    ) {
-      await deleteStorageFile(
-        oldStoragePath
+    formData.append(
+      "tier",
+      tier
+    );
+
+    formData.append(
+      "comment",
+      comment
+    );
+
+    formData.append(
+      "rated_at",
+      existingAvatar?.rated_at ||
+        new Date().toISOString()
+    );
+
+    formData.append(
+      "sort_order",
+      String(
+        existingAvatar?.sort_order ??
+          getNextSortOrder(
+            tier
+          )
+      )
+    );
+
+    if (selectedImageFile) {
+      formData.append(
+        "image",
+        selectedImageFile,
+        selectedImageFile.name
       );
     }
 
+    const result =
+      await adminApi(
+        "save",
+        {
+          method: "POST",
+          body: formData,
+          isFormData: true
+        }
+      );
+
     const normalized =
-      normalizeAvatar(data);
+      normalizeAvatar(
+        result.avatar
+      );
 
     const existingIndex =
       avatars.findIndex(
         avatar =>
-          String(avatar.id) ===
-          String(normalized.id)
+          String(
+            avatar.id
+          ) ===
+          String(
+            normalized.id
+          )
       );
 
-    if (existingIndex >= 0) {
-      avatars[existingIndex] =
-        normalized;
+    if (
+      existingIndex >= 0
+    ) {
+      avatars[
+        existingIndex
+      ] = normalized;
     } else {
-      avatars.push(normalized);
+      avatars.push(
+        normalized
+      );
     }
 
-    await normalizeTierOrder();
+    rebuildSortOrdersLocal();
 
     renderPublic();
-
-    if (getAdminSession()) {
-      renderAdminPanel();
-    }
+    renderAdminPanel();
 
     closeAddAvatarModal();
 
@@ -1953,9 +2329,17 @@ async function saveAvatar() {
       error
     );
 
+    if (
+      error.message?.includes(
+        "Unauthorized"
+      )
+    ) {
+      clearAdminSession();
+    }
+
     showToast(
       error.message ||
-      "Failed to save avatar."
+        "Failed to save avatar."
     );
   } finally {
     isSaving = false;
@@ -1976,12 +2360,15 @@ async function saveAvatar() {
    NEXT SORT ORDER
 ========================================================= */
 
-function getNextSortOrder(tier) {
+function getNextSortOrder(
+  tier
+) {
   const tierAvatars =
     avatars.filter(
       avatar =>
-        normalizeTier(avatar.tier) ===
-        tier
+        normalizeTier(
+          avatar.tier
+        ) === tier
     );
 
   if (!tierAvatars.length) {
@@ -1992,7 +2379,10 @@ function getNextSortOrder(tier) {
     Math.max(
       ...tierAvatars.map(
         avatar =>
-          Number(avatar.sort_order || 0)
+          Number(
+            avatar.sort_order ||
+              0
+          )
       )
     ) + 1
   );
@@ -2003,15 +2393,9 @@ function getNextSortOrder(tier) {
    DELETE AVATAR
 ========================================================= */
 
-async function deleteAvatar(id) {
-  if (!supabaseClient) {
-    showToast(
-      "Supabase belum terhubung."
-    );
-
-    return;
-  }
-
+async function deleteAvatar(
+  id
+) {
   const avatar =
     avatars.find(
       item =>
@@ -2019,11 +2403,15 @@ async function deleteAvatar(id) {
         String(id)
     );
 
-  if (!avatar) return;
+  if (!avatar) {
+    return;
+  }
 
   const username =
     avatar.username
-      ? `@${String(avatar.username).replace(/^@/, "")}`
+      ? `@${String(
+          avatar.username
+        ).replace(/^@/, "")}`
       : "this avatar";
 
   const confirmed =
@@ -2036,26 +2424,16 @@ async function deleteAvatar(id) {
   }
 
   try {
-    const { error } =
-      await supabaseClient
-        .from(SUPABASE_TABLE)
-        .delete()
-        .eq("id", id);
-
-    if (error) {
-      throw error;
-    }
-
-    const storagePath =
-      extractStoragePathFromUrl(
-        avatar.image_url
-      );
-
-    if (storagePath) {
-      await deleteStorageFile(
-        storagePath
-      );
-    }
+    await adminApi(
+      "delete",
+      {
+        method: "POST",
+        body: {
+          action: "delete",
+          id
+        }
+      }
+    );
 
     avatars =
       avatars.filter(
@@ -2064,13 +2442,10 @@ async function deleteAvatar(id) {
           String(id)
       );
 
-    await normalizeTierOrder();
+    rebuildSortOrdersLocal();
 
     renderPublic();
-
-    if (getAdminSession()) {
-      renderAdminPanel();
-    }
+    renderAdminPanel();
 
     showToast(
       "Avatar deleted successfully."
@@ -2083,9 +2458,56 @@ async function deleteAvatar(id) {
 
     showToast(
       error.message ||
-      "Failed to delete avatar."
+        "Failed to delete avatar."
     );
   }
+}
+
+
+/* =========================================================
+   LOCAL ORDER
+========================================================= */
+
+function normalizeLocalTierOrder(
+  tier
+) {
+  const list =
+    avatars
+      .filter(
+        avatar =>
+          normalizeTier(
+            avatar.tier
+          ) === tier
+      )
+      .sort(
+        (a, b) =>
+          Number(
+            a.sort_order || 0
+          ) -
+          Number(
+            b.sort_order || 0
+          )
+      );
+
+  list.forEach(
+    (
+      avatar,
+      index
+    ) => {
+      avatar.sort_order =
+        index;
+    }
+  );
+}
+
+
+function rebuildSortOrdersLocal() {
+  TIERS.forEach(
+    tier =>
+      normalizeLocalTierOrder(
+        tier
+      )
+  );
 }
 
 
@@ -2097,7 +2519,9 @@ function setupDragAndDrop() {
   const container =
     $("adminTierContainer");
 
-  if (!container) return;
+  if (!container) {
+    return;
+  }
 
   container.addEventListener(
     "dragstart",
@@ -2107,20 +2531,21 @@ function setupDragAndDrop() {
           ".admin-avatar-card"
         );
 
-      if (!card) return;
+      if (!card) {
+        return;
+      }
 
       draggedAvatarId =
         card.dataset.avatarId;
 
-      draggedElement = card;
+      draggedElement =
+        card;
 
       card.classList.add(
         "dragging"
       );
 
-      if (
-        event.dataTransfer
-      ) {
+      if (event.dataTransfer) {
         event.dataTransfer.effectAllowed =
           "move";
 
@@ -2141,17 +2566,21 @@ function setupDragAndDrop() {
         );
       }
 
-      draggedAvatarId = null;
-      draggedElement = null;
+      draggedAvatarId =
+        null;
+
+      draggedElement =
+        null;
 
       queryAll(
         ".drop-active",
         container
-      ).forEach(element => {
-        element.classList.remove(
-          "drop-active"
-        );
-      });
+      ).forEach(
+        element =>
+          element.classList.remove(
+            "drop-active"
+          )
+      );
     }
   );
 
@@ -2165,15 +2594,15 @@ function setupDragAndDrop() {
           ".admin-tier-dropzone"
         );
 
-      if (!zone) return;
+      if (!zone) {
+        return;
+      }
 
       zone.classList.add(
         "drop-active"
       );
 
-      if (
-        event.dataTransfer
-      ) {
+      if (event.dataTransfer) {
         event.dataTransfer.dropEffect =
           "move";
       }
@@ -2188,12 +2617,10 @@ function setupDragAndDrop() {
           ".admin-tier-dropzone"
         );
 
-      if (!zone) return;
+      if (!zone) {
+        return;
+      }
 
-      /*
-       * Only remove when actually leaving
-       * the zone.
-       */
       if (
         !zone.contains(
           event.relatedTarget
@@ -2216,7 +2643,9 @@ function setupDragAndDrop() {
           ".admin-tier-dropzone"
         );
 
-      if (!zone) return;
+      if (!zone) {
+        return;
+      }
 
       zone.classList.remove(
         "drop-active"
@@ -2228,7 +2657,9 @@ function setupDragAndDrop() {
           "text/plain"
         );
 
-      if (!avatarId) return;
+      if (!avatarId) {
+        return;
+      }
 
       const targetTier =
         normalizeTier(
@@ -2263,14 +2694,15 @@ async function moveAvatarToTier(
         String(avatarId)
     );
 
-  if (!avatar) return;
+  if (!avatar) {
+    return;
+  }
 
   const oldTier =
-    normalizeTier(avatar.tier);
+    normalizeTier(
+      avatar.tier
+    );
 
-  /*
-   * Determine insertion index.
-   */
   const cards =
     queryAll(
       ".admin-avatar-card",
@@ -2288,91 +2720,84 @@ async function moveAvatarToTier(
   if (
     hoveredCard &&
     String(
-      hoveredCard.dataset.avatarId
-    ) !== String(avatarId)
+      hoveredCard.dataset
+        .avatarId
+    ) !==
+      String(avatarId)
   ) {
     insertIndex =
       cards.indexOf(
         hoveredCard
       );
 
-    if (insertIndex < 0) {
+    if (
+      insertIndex < 0
+    ) {
       insertIndex =
         cards.length;
     }
   }
 
-  avatar.tier =
-    targetTier;
-
   /*
-   * Optimistic local rendering.
+   * Build target order
+   * from current data.
    */
-  rebuildSortOrders();
 
-  /*
-   * Adjust target order.
-   */
   const targetAvatars =
     avatars
       .filter(
         item =>
-          normalizeTier(item.tier) ===
-          targetTier
+          normalizeTier(
+            item.tier
+          ) ===
+          targetTier &&
+          String(
+            item.id
+          ) !==
+            String(avatarId)
       )
       .sort(
         (a, b) =>
-          Number(a.sort_order || 0) -
-          Number(b.sort_order || 0)
+          Number(
+            a.sort_order || 0
+          ) -
+          Number(
+            b.sort_order || 0
+          )
       );
 
-  const movedIndex =
-    targetAvatars.findIndex(
-      item =>
-        String(item.id) ===
-        String(avatarId)
-    );
+  avatar.tier =
+    targetTier;
+
+  targetAvatars.splice(
+    Math.min(
+      insertIndex,
+      targetAvatars.length
+    ),
+    0,
+    avatar
+  );
+
+  targetAvatars.forEach(
+    (
+      item,
+      index
+    ) => {
+      item.sort_order =
+        index;
+    }
+  );
 
   if (
-    movedIndex >= 0 &&
-    insertIndex !== movedIndex
+    oldTier !==
+    targetTier
   ) {
-    const [moved] =
-      targetAvatars.splice(
-        movedIndex,
-        1
-      );
-
-    targetAvatars.splice(
-      Math.min(
-        insertIndex,
-        targetAvatars.length
-      ),
-      0,
-      moved
-    );
-
-    targetAvatars.forEach(
-      (item, index) => {
-        item.sort_order =
-          index;
-      }
-    );
-  }
-
-  /*
-   * If moved between tiers,
-   * normalize both tiers.
-   */
-  if (oldTier !== targetTier) {
     normalizeLocalTierOrder(
       oldTier
     );
-
-    normalizeLocalTierOrder(
-      targetTier
-    );
   }
+
+  rebuildSortOrdersLocal();
 
   renderAdminPanel();
 
@@ -2382,7 +2807,8 @@ async function moveAvatarToTier(
     renderPublic();
 
     showToast(
-      oldTier === targetTier
+      oldTier ===
+        targetTier
         ? "Avatar order updated."
         : `Avatar moved to ${targetTier} tier.`
     );
@@ -2395,45 +2821,10 @@ async function moveAvatarToTier(
     await loadAvatars();
 
     showToast(
-      "Failed to save new tier order."
+      error.message ||
+        "Failed to save new tier order."
     );
   }
-}
-
-
-/* =========================================================
-   LOCAL ORDER
-========================================================= */
-
-function normalizeLocalTierOrder(
-  tier
-) {
-  const list =
-    avatars
-      .filter(
-        avatar =>
-          normalizeTier(avatar.tier) ===
-          tier
-      )
-      .sort(
-        (a, b) =>
-          Number(a.sort_order || 0) -
-          Number(b.sort_order || 0)
-      );
-
-  list.forEach(
-    (avatar, index) => {
-      avatar.sort_order =
-        index;
-    }
-  );
-}
-
-
-function rebuildSortOrders() {
-  TIERS.forEach(
-    normalizeLocalTierOrder
-  );
 }
 
 
@@ -2442,27 +2833,23 @@ function rebuildSortOrders() {
 ========================================================= */
 
 async function saveAllSortOrders() {
-  if (!supabaseClient) {
-    throw new Error(
-      "Supabase is not initialized."
-    );
-  }
-
-  rebuildSortOrders();
+  rebuildSortOrdersLocal();
 
   const updates =
     avatars.map(
       avatar => ({
         id: avatar.id,
-        tier: normalizeTier(
-          avatar.tier
-        ),
+
+        tier:
+          normalizeTier(
+            avatar.tier
+          ),
+
         sort_order:
           Number(
-            avatar.sort_order || 0
-          ),
-        updated_at:
-          new Date().toISOString()
+            avatar.sort_order ||
+              0
+          )
       })
     );
 
@@ -2470,41 +2857,16 @@ async function saveAllSortOrders() {
     return;
   }
 
-  const { error } =
-    await supabaseClient
-      .from(SUPABASE_TABLE)
-      .upsert(
-        updates,
-        {
-          onConflict: "id"
-        }
-      );
-
-  if (error) {
-    throw error;
-  }
-}
-
-
-/* =========================================================
-   NORMALIZE DATABASE ORDER
-========================================================= */
-
-async function normalizeTierOrder() {
-  rebuildSortOrders();
-
-  if (!avatars.length) {
-    return;
-  }
-
-  try {
-    await saveAllSortOrders();
-  } catch (error) {
-    console.warn(
-      "Unable to normalize tier order:",
-      error
-    );
-  }
+  await adminApi(
+    "reorder",
+    {
+      method: "POST",
+      body: {
+        action: "reorder",
+        avatars: updates
+      }
+    }
+  );
 }
 
 
@@ -2519,7 +2881,9 @@ function setupSearch() {
   const clear =
     $("clearSearch");
 
-  if (!input) return;
+  if (!input) {
+    return;
+  }
 
   input.addEventListener(
     "input",
@@ -2574,7 +2938,9 @@ function updateSearchStatus() {
   const status =
     $("searchStatus");
 
-  if (!status) return;
+  if (!status) {
+    return;
+  }
 
   const search =
     currentSearch.trim();
@@ -2593,7 +2959,11 @@ function updateSearchStatus() {
     getFilteredAvatars().length;
 
   status.textContent =
-    `${count} avatar${count !== 1 ? "s" : ""} found.`;
+    `${count} avatar${
+      count !== 1
+        ? "s"
+        : ""
+    } found.`;
 
   status.className =
     "mt-3 min-h-5 text-xs text-pastel-700";
@@ -2607,44 +2977,47 @@ function updateSearchStatus() {
 function setupFilters() {
   queryAll(
     "[data-filter]"
-  ).forEach(button => {
-    button.addEventListener(
-      "click",
-      () => {
-        currentFilter =
-          button.dataset.filter ||
-          "ALL";
+  ).forEach(
+    button => {
+      button.addEventListener(
+        "click",
+        () => {
+          currentFilter =
+            button.dataset
+              .filter ||
+            "ALL";
 
-        queryAll(
-          "[data-filter]"
-        ).forEach(
-          item => {
-            item.classList.remove(
-              "bg-ink-900",
-              "text-white"
-            );
+          queryAll(
+            "[data-filter]"
+          ).forEach(
+            item => {
+              item.classList.remove(
+                "bg-ink-900",
+                "text-white"
+              );
 
-            item.classList.add(
-              "bg-white"
-            );
-          }
-        );
+              item.classList.add(
+                "bg-white"
+              );
+            }
+          );
 
-        button.classList.remove(
-          "bg-white"
-        );
+          button.classList.remove(
+            "bg-white"
+          );
 
-        button.classList.add(
-          "bg-ink-900",
-          "text-white"
-        );
+          button.classList.add(
+            "bg-ink-900",
+            "text-white"
+          );
 
-        renderTierList();
+          renderTierList();
 
-        updateSearchStatus();
-      }
-    );
-  });
+          updateSearchStatus();
+        }
+      );
+    }
+  );
 }
 
 
@@ -2652,11 +3025,15 @@ function setupFilters() {
    IMPORT
 ========================================================= */
 
-async function importDataFile(event) {
+async function importDataFile(
+  event
+) {
   const file =
     event.target.files?.[0];
 
-  if (!file) return;
+  if (!file) {
+    return;
+  }
 
   try {
     const text =
@@ -2667,10 +3044,14 @@ async function importDataFile(event) {
 
     let imported = [];
 
-    if (Array.isArray(parsed)) {
+    if (
+      Array.isArray(parsed)
+    ) {
       imported = parsed;
     } else if (
-      Array.isArray(parsed.avatars)
+      Array.isArray(
+        parsed.avatars
+      )
     ) {
       imported =
         parsed.avatars;
@@ -2688,9 +3069,13 @@ async function importDataFile(event) {
 
     const normalized =
       imported.map(
-        (avatar, index) => ({
-          ...normalizeAvatar({
+        (
+          avatar,
+          index
+        ) =>
+          normalizeAvatar({
             ...avatar,
+
             id:
               avatar.id ||
               generateId(),
@@ -2706,7 +3091,6 @@ async function importDataFile(event) {
                   )
                 : index
           })
-        })
       );
 
     const confirmed =
@@ -2719,19 +3103,17 @@ async function importDataFile(event) {
       return;
     }
 
-    const { error } =
-      await supabaseClient
-        .from(SUPABASE_TABLE)
-        .upsert(
-          normalized,
-          {
-            onConflict: "id"
-          }
-        );
-
-    if (error) {
-      throw error;
-    }
+    await adminApi(
+      "import",
+      {
+        method: "POST",
+        body: {
+          action: "import",
+          avatars:
+            normalized
+        }
+      }
+    );
 
     await loadAvatars();
 
@@ -2746,7 +3128,7 @@ async function importDataFile(event) {
 
     showToast(
       error.message ||
-      "Invalid JSON file."
+        "Invalid JSON file."
     );
   } finally {
     event.target.value = "";
@@ -2763,33 +3145,44 @@ function exportData() {
     exported_at:
       new Date().toISOString(),
 
-    version:
-      1,
+    version: 1,
 
     avatars:
-      avatars
-        .map(
-          avatar => ({
-            id: avatar.id,
-            username: avatar.username,
-            display_name:
-              avatar.display_name,
-            outfit_code:
-              avatar.outfit_code,
-            profile_url:
-              avatar.profile_url,
-            image_url:
-              avatar.image_url,
-            score: avatar.score,
-            tier: avatar.tier,
-            comment:
-              avatar.comment,
-            rated_at:
-              avatar.rated_at,
-            sort_order:
-              avatar.sort_order
-          })
-        )
+      avatars.map(
+        avatar => ({
+          id: avatar.id,
+
+          username:
+            avatar.username,
+
+          display_name:
+            avatar.display_name,
+
+          outfit_code:
+            avatar.outfit_code,
+
+          profile_url:
+            avatar.profile_url,
+
+          image_url:
+            avatar.image_url,
+
+          score:
+            avatar.score,
+
+          tier:
+            avatar.tier,
+
+          comment:
+            avatar.comment,
+
+          rated_at:
+            avatar.rated_at,
+
+          sort_order:
+            avatar.sort_order
+        })
+      )
   };
 
   const blob =
@@ -2808,12 +3201,17 @@ function exportData() {
     );
 
   const url =
-    URL.createObjectURL(blob);
+    URL.createObjectURL(
+      blob
+    );
 
   const anchor =
-    document.createElement("a");
+    document.createElement(
+      "a"
+    );
 
-  anchor.href = url;
+  anchor.href =
+    url;
 
   anchor.download =
     `roblox-avatar-tier-list-${new Date()
@@ -2828,7 +3226,9 @@ function exportData() {
 
   anchor.remove();
 
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(
+    url
+  );
 
   showToast(
     "Data exported successfully."
@@ -2840,15 +3240,17 @@ function exportData() {
    TOAST
 ========================================================= */
 
-let toastTimer = null;
-
-function showToast(message) {
+function showToast(
+  message
+) {
   let toast =
     $("appToast");
 
   if (!toast) {
     toast =
-      document.createElement("div");
+      document.createElement(
+        "div"
+      );
 
     toast.id =
       "appToast";
@@ -2868,14 +3270,19 @@ function showToast(message) {
     "hidden"
   );
 
-  clearTimeout(toastTimer);
+  clearTimeout(
+    toastTimer
+  );
 
   toastTimer =
-    setTimeout(() => {
-      toast.classList.add(
-        "hidden"
-      );
-    }, 2200);
+    setTimeout(
+      () => {
+        toast.classList.add(
+          "hidden"
+        );
+      },
+      2200
+    );
 }
 
 
@@ -2918,7 +3325,9 @@ function setupImageUpload() {
       const file =
         event.target.files?.[0];
 
-      handleImageFile(file);
+      handleImageFile(
+        file
+      );
     }
   );
 
@@ -2964,21 +3373,25 @@ function setupImageUpload() {
         event.dataTransfer
           ?.files?.[0];
 
-      handleImageFile(file);
+      handleImageFile(
+        file
+      );
     }
   );
 }
 
 
 /* =========================================================
-   EVENT DELEGATION
+   ADMIN DELEGATION
 ========================================================= */
 
 function setupAdminDelegation() {
   const container =
     $("adminTierContainer");
 
-  if (!container) return;
+  if (!container) {
+    return;
+  }
 
   container.addEventListener(
     "click",
@@ -2992,7 +3405,8 @@ function setupAdminDelegation() {
         event.stopPropagation();
 
         openEditAvatarModal(
-          editButton.dataset.avatarId
+          editButton.dataset
+            .avatarId
         );
 
         return;
@@ -3007,7 +3421,8 @@ function setupAdminDelegation() {
         event.stopPropagation();
 
         deleteAvatar(
-          deleteButton.dataset.avatarId
+          deleteButton.dataset
+            .avatarId
         );
 
         return;
@@ -3025,7 +3440,9 @@ function setupPublicAvatarClick() {
   const container =
     $("tierContainer");
 
-  if (!container) return;
+  if (!container) {
+    return;
+  }
 
   container.addEventListener(
     "click",
@@ -3035,10 +3452,13 @@ function setupPublicAvatarClick() {
           ".avatar-card"
         );
 
-      if (!card) return;
+      if (!card) {
+        return;
+      }
 
       openAvatarModal(
-        card.dataset.avatarId
+        card.dataset
+          .avatarId
       );
     }
   );
@@ -3047,11 +3467,6 @@ function setupPublicAvatarClick() {
 
 /* =========================================================
    ADMIN BUTTON
-   =========================================================
-
-   THIS IS THE IMPORTANT FIX.
-
-   The listener is registered after DOM exists.
 ========================================================= */
 
 function setupAdminButton() {
@@ -3076,10 +3491,6 @@ function setupAdminButton() {
       event.preventDefault();
       event.stopPropagation();
 
-      console.log(
-        "Admin button clicked."
-      );
-
       openAdminLogin();
     }
   );
@@ -3095,34 +3506,36 @@ function setupKeyboard() {
     "keydown",
     event => {
       if (
-        event.key === "Escape"
+        event.key !==
+        "Escape"
       ) {
-        if (
-          !$("avatarModal")?.classList.contains(
-            "hidden"
-          )
-        ) {
-          closeAvatarModal();
-          return;
-        }
+        return;
+      }
 
-        if (
-          !$("addAvatarModal")?.classList.contains(
-            "hidden"
-          )
-        ) {
-          closeAddAvatarModal();
-          return;
-        }
+      if (
+        !$("avatarModal")?.classList.contains(
+          "hidden"
+        )
+      ) {
+        closeAvatarModal();
+        return;
+      }
 
-        if (
-          !$("adminLoginModal")?.classList.contains(
-            "hidden"
-          )
-        ) {
-          closeAdminLoginModal();
-          return;
-        }
+      if (
+        !$("addAvatarModal")?.classList.contains(
+          "hidden"
+        )
+      ) {
+        closeAddAvatarModal();
+        return;
+      }
+
+      if (
+        !$("adminLoginModal")?.classList.contains(
+          "hidden"
+        )
+      ) {
+        closeAdminLoginModal();
       }
     }
   );
@@ -3131,7 +3544,8 @@ function setupKeyboard() {
     "keydown",
     event => {
       if (
-        event.key === "Enter"
+        event.key ===
+        "Enter"
       ) {
         event.preventDefault();
 
@@ -3147,9 +3561,6 @@ function setupKeyboard() {
 ========================================================= */
 
 function setupButtons() {
-  /*
-   * ADMIN
-   */
   setupAdminButton();
 
   $("unlockAdmin")?.addEventListener(
@@ -3178,9 +3589,8 @@ function setupButtons() {
   );
 
 
-  /*
-   * ADD / EDIT
-   */
+  /* ADD / EDIT */
+
   $("addAvatarButton")?.addEventListener(
     "click",
     openAddAvatarModal
@@ -3207,9 +3617,8 @@ function setupButtons() {
   );
 
 
-  /*
-   * AVATAR DETAIL
-   */
+  /* DETAIL */
+
   $("closeModal")?.addEventListener(
     "click",
     closeAvatarModal
@@ -3226,9 +3635,8 @@ function setupButtons() {
   );
 
 
-  /*
-   * IMPORT / EXPORT
-   */
+  /* IMPORT / EXPORT */
+
   $("exportData")?.addEventListener(
     "click",
     exportData
@@ -3250,13 +3658,6 @@ async function initApp() {
     "Roblox Avatar Rating initializing..."
   );
 
-  /*
-   * IMPORTANT:
-   * Initialize buttons BEFORE Supabase.
-   *
-   * Therefore, even if Supabase has a problem,
-   * the Admin button can STILL be clicked.
-   */
   setupButtons();
 
   setupSearch();
@@ -3273,21 +3674,12 @@ async function initApp() {
 
   setupKeyboard();
 
-  /*
-   * Initialize Supabase AFTER UI events.
-   */
   const supabaseReady =
     initSupabase();
 
   if (!supabaseReady) {
     return;
   }
-
-  /*
-   * If previous valid admin session exists,
-   * don't automatically open admin panel.
-   * User can click Admin manually.
-   */
 
   await loadAvatars();
 
@@ -3319,8 +3711,6 @@ if (
 
 /* =========================================================
    DEBUG EXPORT
-   ---------------------------------------------------------
-   Makes debugging easier from browser console.
 ========================================================= */
 
 window.RobloxAvatarRating = {
@@ -3328,9 +3718,12 @@ window.RobloxAvatarRating = {
     return avatars;
   },
 
-  reload: loadAvatars,
+  reload:
+    loadAvatars,
 
-  openAdmin: openAdminLogin,
+  openAdmin:
+    openAdminLogin,
 
-  logout: logoutAdmin
+  logout:
+    logoutAdmin
 };
