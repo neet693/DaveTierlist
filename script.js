@@ -14,12 +14,12 @@
    - Reorder
    - Import / Export
 
-   SECURITY:
-   - NEVER put SUPABASE_SECRET_KEY here
-   - NEVER put admin password here
-   - Admin authentication handled by /api/admin-login
-   - Admin CRUD handled by /api/admin-avatar
-   - Browser sends HttpOnly admin cookie automatically
+   IMPORTANT:
+   - Admin API menggunakan JSON
+   - Image dikirim sebagai Base64
+   - Tidak menggunakan multipart/FormData
+   - Admin password TIDAK disimpan di frontend
+   - Supabase Secret Key TIDAK disimpan di frontend
 ========================================================= */
 
 "use strict";
@@ -35,8 +35,11 @@ const SUPABASE_URL =
 const SUPABASE_PUBLISHABLE_KEY =
   "sb_publishable_zRqE9fINlvMo1WHggmU-Dg_OP5KCS9T";
 
-const SUPABASE_TABLE = "avatars";
-const SUPABASE_BUCKET = "avatars";
+const SUPABASE_TABLE =
+  "avatars";
+
+const SUPABASE_BUCKET =
+  "avatars";
 
 const ADMIN_LOGIN_API =
   "/api/admin-login";
@@ -278,16 +281,6 @@ function showGlobalError(message) {
 
 /* =========================================================
    ADMIN SESSION UI
-=========================================================
-
-   IMPORTANT:
-   This is NOT authentication.
-
-   Real authentication:
-   /api/admin-login
-
-   The actual session should be stored
-   in an HttpOnly cookie.
 ========================================================= */
 
 function saveAdminSession() {
@@ -382,6 +375,83 @@ function clearAdminSession() {
 
 
 /* =========================================================
+   FILE -> BASE64
+   =========================================================
+
+   API Vercel membaca JSON, jadi file gambar
+   dikonversi menjadi Base64 sebelum dikirim.
+========================================================= */
+
+function fileToBase64(file) {
+  return new Promise(
+    (resolve, reject) => {
+      if (!file) {
+        resolve(null);
+        return;
+      }
+
+      const reader =
+        new FileReader();
+
+      reader.onload = () => {
+        const result =
+          String(
+            reader.result || ""
+          );
+
+        /*
+         * result:
+         * data:image/png;base64,AAAA...
+         */
+
+        const commaIndex =
+          result.indexOf(",");
+
+        if (
+          commaIndex === -1
+        ) {
+          reject(
+            new Error(
+              "Failed to encode image."
+            )
+          );
+
+          return;
+        }
+
+        resolve({
+          base64:
+            result.substring(
+              commaIndex + 1
+            ),
+
+          mimeType:
+            file.type ||
+            "application/octet-stream",
+
+          fileName:
+            file.name ||
+            "avatar-image"
+        });
+      };
+
+      reader.onerror = () => {
+        reject(
+          new Error(
+            "Failed to read image file."
+          )
+        );
+      };
+
+      reader.readAsDataURL(
+        file
+      );
+    }
+  );
+}
+
+
+/* =========================================================
    ADMIN API
 ========================================================= */
 
@@ -389,69 +459,22 @@ async function adminApi(
   action,
   payload = {}
 ) {
-  let body;
-  const headers = {};
-
   /*
    * =======================================================
-   * FORM DATA
+   * ALWAYS JSON
    * =======================================================
    */
 
-  if (
-    payload.body instanceof FormData
-  ) {
-    body =
-      payload.body;
+  const requestBody = {
+    action,
+    ...(payload.body || {})
+  };
 
-    if (
-      !body.has("action")
-    ) {
-      body.append(
-        "action",
-        action
-      );
-    }
-
-    /*
-     * IMPORTANT:
-     * DO NOT set Content-Type manually.
-     *
-     * Browser automatically creates:
-     *
-     * multipart/form-data;
-     * boundary=....
-     */
-
-    console.log(
-      "[Admin API] Multipart request:",
-      action
-    );
-  }
-
-  /*
-   * =======================================================
-   * JSON
-   * =======================================================
-   */
-
-  else {
-    headers[
-      "Content-Type"
-    ] =
-      "application/json";
-
-    body =
-      JSON.stringify({
-        action,
-        ...(payload.body || {})
-      });
-
-    console.log(
-      "[Admin API] JSON request:",
-      action
-    );
-  }
+  console.log(
+    "[Admin API] JSON request:",
+    action,
+    requestBody
+  );
 
   const response =
     await fetch(
@@ -461,9 +484,18 @@ async function adminApi(
 
         credentials: "include",
 
-        headers,
+        headers: {
+          "Content-Type":
+            "application/json",
 
-        body
+          "Accept":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify(
+            requestBody
+          )
       }
     );
 
@@ -501,7 +533,23 @@ async function adminApi(
   if (!response.ok) {
     throw new Error(
       result.message ||
+      result.error ||
       `Admin API failed (${response.status}).`
+    );
+  }
+
+  /*
+   * API berhasil tetapi success=false
+   */
+
+  if (
+    result &&
+    result.success === false
+  ) {
+    throw new Error(
+      result.message ||
+      result.error ||
+      "Admin API request failed."
     );
   }
 
@@ -660,7 +708,8 @@ async function loginAdmin() {
   }
 
   if (errorElement) {
-    errorElement.textContent = "";
+    errorElement.textContent =
+      "";
   }
 
   try {
@@ -674,12 +723,16 @@ async function loginAdmin() {
 
           headers: {
             "Content-Type":
+              "application/json",
+
+            "Accept":
               "application/json"
           },
 
-          body: JSON.stringify({
-            password
-          })
+          body:
+            JSON.stringify({
+              password
+            })
         }
       );
 
@@ -1054,7 +1107,8 @@ function renderTierList() {
     return;
   }
 
-  container.innerHTML = "";
+  container.innerHTML =
+    "";
 
   const filtered =
     getFilteredAvatars();
@@ -1157,8 +1211,7 @@ function createPublicTier(
         <div class="text-[9px] font-bold uppercase tracking-widest text-ink-500">
           ${tierAvatars.length}
           avatar${
-            tierAvatars.length !==
-            1
+            tierAvatars.length !== 1
               ? "s"
               : ""
           }
@@ -1602,7 +1655,8 @@ function renderAdminPanel() {
     return;
   }
 
-  container.innerHTML = "";
+  container.innerHTML =
+    "";
 
   TIERS.forEach(
     tier => {
@@ -1680,8 +1734,7 @@ function createAdminTier(
           <div class="text-[9px] font-bold uppercase tracking-widest text-ink-500">
             ${tierAvatars.length}
             avatar${
-              tierAvatars.length !==
-              1
+              tierAvatars.length !== 1
                 ? "s"
                 : ""
             }
@@ -2179,12 +2232,6 @@ function handleImageFile(file) {
     return;
   }
 
-  /*
-   * Frontend limit.
-   *
-   * Server must ALSO validate this.
-   */
-
   const maxSize =
     10 * 1024 * 1024;
 
@@ -2318,9 +2365,7 @@ async function saveAvatar() {
   }
 
   /*
-   * New avatar MUST have image.
-   *
-   * Edit avatar can keep old image.
+   * New avatar wajib memiliki image.
    */
 
   if (
@@ -2341,6 +2386,7 @@ async function saveAvatar() {
 
   if (button) {
     button.disabled = true;
+
     button.textContent =
       "Saving...";
   }
@@ -2375,6 +2421,15 @@ async function saveAvatar() {
       )
     );
 
+    /*
+     * =====================================================
+     * IMAGE
+     * =====================================================
+     */
+
+    let imagePayload =
+      null;
+
     if (
       selectedImageFile
     ) {
@@ -2391,6 +2446,11 @@ async function saveAvatar() {
             selectedImageFile.size
         }
       );
+
+      imagePayload =
+        await fileToBase64(
+          selectedImageFile
+        );
     } else {
       console.log(
         "[Avatar] Image: existing image"
@@ -2399,109 +2459,90 @@ async function saveAvatar() {
 
     /*
      * =====================================================
-     * FORM DATA
+     * JSON PAYLOAD
      * =====================================================
      */
 
-    const formData =
-      new FormData();
+    const payload = {
+      id:
+        String(avatarId),
 
-    formData.append(
-      "action",
-      "save"
-    );
+      username:
+        username.replace(
+          /^@/,
+          ""
+        ),
 
-    formData.append(
-      "id",
-      String(avatarId)
-    );
+      display_name:
+        displayName,
 
-    formData.append(
-      "username",
-      username.replace(
-        /^@/,
-        ""
-      )
-    );
+      outfit_code:
+        outfitCode,
 
-    formData.append(
-      "display_name",
-      displayName
-    );
-
-    formData.append(
-      "outfit_code",
-      outfitCode
-    );
-
-    formData.append(
-      "profile_url",
-      profileUrl ||
+      profile_url:
+        profileUrl ||
         buildRobloxProfileUrl(
           username
-        )
-    );
+        ),
 
-    formData.append(
-      "score",
-      String(score)
-    );
+      score:
+        Number(score),
 
-    formData.append(
-      "tier",
-      tier
-    );
+      tier:
+        tier,
 
-    formData.append(
-      "comment",
-      comment
-    );
+      comment:
+        comment,
 
-    formData.append(
-      "rated_at",
-      existingAvatar?.rated_at ||
-        new Date().toISOString()
-    );
+      rated_at:
+        existingAvatar?.rated_at ||
+        new Date().toISOString(),
 
-    formData.append(
-      "sort_order",
-      String(
-        existingAvatar?.sort_order ??
+      sort_order:
+        Number(
+          existingAvatar?.sort_order ??
           getNextSortOrder(
             tier
           )
-      )
-    );
+        )
+    };
 
     /*
-     * Existing image URL.
-     *
-     * API can keep it when no new image
-     * is uploaded.
+     * Existing image.
      */
 
     if (
       existingAvatar?.image_url
     ) {
-      formData.append(
-        "existing_image_url",
-        existingAvatar.image_url
-      );
+      payload.existing_image_url =
+        existingAvatar.image_url;
     }
 
     /*
-     * New image
+     * New image.
+     *
+     * IMPORTANT:
+     * admin-avatar.js harus membaca:
+     *
+     * image_base64
+     * image_mime_type
+     * image_name
      */
 
-    if (
-      selectedImageFile
-    ) {
-      formData.append(
-        "image",
-        selectedImageFile,
-        selectedImageFile.name
-      );
+    if (imagePayload) {
+      payload.image_base64 =
+        imagePayload.base64;
+
+      payload.image_mime_type =
+        imagePayload.mimeType;
+
+      payload.image_name =
+        imagePayload.fileName;
     }
+
+    console.log(
+      "[Avatar] Sending JSON save request."
+    );
 
     /*
      * =====================================================
@@ -2514,24 +2555,14 @@ async function saveAvatar() {
         "save",
         {
           body:
-            formData
+            payload
         }
       );
 
     /*
-     * API should return:
-     *
-     * {
-     *   success: true,
-     *   avatar: {...}
-     * }
-     *
-     * We also support:
-     *
-     * {
-     *   success: true,
-     *   data: {...}
-     * }
+     * =====================================================
+     * RESPONSE
+     * =====================================================
      */
 
     const returnedAvatar =
@@ -2539,11 +2570,6 @@ async function saveAvatar() {
       result.data;
 
     if (!returnedAvatar) {
-      /*
-       * If API did not return avatar,
-       * reload from Supabase instead.
-       */
-
       await loadAvatars();
 
       closeAddAvatarModal();
@@ -2617,7 +2643,7 @@ async function saveAvatar() {
 
     showToast(
       error.message ||
-        "Failed to save avatar."
+      "Failed to save avatar."
     );
   } finally {
     isSaving =
@@ -2660,8 +2686,7 @@ function getNextSortOrder(
       ...tierAvatars.map(
         avatar =>
           Number(
-            avatar.sort_order ||
-            0
+            avatar.sort_order || 0
           )
       )
     ) + 1
@@ -2710,7 +2735,8 @@ async function deleteAvatar(
       "delete",
       {
         body: {
-          id
+          id:
+            String(id)
         }
       }
     );
@@ -2739,9 +2765,19 @@ async function deleteAvatar(
       error
     );
 
+    if (
+      error.message
+        ?.toLowerCase()
+        .includes(
+          "unauthorized"
+        )
+    ) {
+      clearAdminSession();
+    }
+
     showToast(
       error.message ||
-        "Failed to delete avatar."
+      "Failed to delete avatar."
     );
   }
 }
@@ -3113,7 +3149,7 @@ async function moveAvatarToTier(
 
     showToast(
       error.message ||
-        "Failed to save new tier order."
+      "Failed to save new tier order."
     );
   }
 }
@@ -3130,7 +3166,9 @@ async function saveAllSortOrders() {
     avatars.map(
       avatar => ({
         id:
-          avatar.id,
+          String(
+            avatar.id
+          ),
 
         tier:
           normalizeTier(
@@ -3139,8 +3177,7 @@ async function saveAllSortOrders() {
 
         sort_order:
           Number(
-            avatar.sort_order ||
-            0
+            avatar.sort_order || 0
           )
       })
     );
@@ -3149,8 +3186,18 @@ async function saveAllSortOrders() {
     return;
   }
 
+  /*
+   * IMPORTANT:
+   *
+   * API menggunakan:
+   * action = "reorder"
+   *
+   * BUKAN:
+   * action = "update-order"
+   */
+
   await adminApi(
-    "update-order",
+    "reorder",
     {
       body: {
         avatars:
@@ -3421,9 +3468,19 @@ async function importDataFile(
       error
     );
 
+    if (
+      error.message
+        ?.toLowerCase()
+        .includes(
+          "unauthorized"
+        )
+    ) {
+      clearAdminSession();
+    }
+
     showToast(
       error.message ||
-        "Invalid JSON file."
+      "Invalid JSON file."
     );
   } finally {
     event.target.value =
@@ -3895,7 +3952,9 @@ function setupButtons() {
   );
 
 
-  /* ADD / EDIT */
+  /* =======================================================
+     ADD / EDIT
+  ======================================================= */
 
   $("addAvatarButton")?.addEventListener(
     "click",
@@ -3923,7 +3982,9 @@ function setupButtons() {
   );
 
 
-  /* DETAIL */
+  /* =======================================================
+     DETAIL
+  ======================================================= */
 
   $("closeModal")?.addEventListener(
     "click",
@@ -3941,7 +4002,9 @@ function setupButtons() {
   );
 
 
-  /* IMPORT / EXPORT */
+  /* =======================================================
+     IMPORT / EXPORT
+  ======================================================= */
 
   $("exportData")?.addEventListener(
     "click",
