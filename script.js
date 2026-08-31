@@ -1,7 +1,7 @@
 /* =========================================================
    ROBLOX AVATAR RATING
    SUPABASE + VERCEL API
-   RLS SAFE VERSION
+   SECURE FRONTEND VERSION
    =========================================================
 
    PUBLIC
@@ -11,34 +11,35 @@
    ADMIN
    ---------------------------------------------------------
    - Login through /api/admin-login
-   - Server-side authenticated admin session
+   - HttpOnly cookie authentication
    - Add avatar
    - Edit avatar
    - Delete avatar
    - Upload image
    - Delete image
-   - Drag & drop between tiers
-   - Reorder avatars
+   - Drag & drop tiers
+   - Reorder
    - Import JSON
    - Export JSON
    - Logout
 
    SECURITY
    ---------------------------------------------------------
-   SUPABASE_PUBLISHABLE_KEY:
-     Safe for frontend.
+   SUPABASE PUBLISHABLE KEY:
+     Safe to expose in frontend.
 
-   SUPABASE_SECRET_KEY:
-     NEVER put in this file.
-     Used only by Vercel server functions.
+   SUPABASE SECRET KEY:
+     NEVER put it here.
 
-   Database INSERT / UPDATE / DELETE:
-     Goes through /api/admin-avatar.
+   ADMIN OPERATIONS:
+     Always go through /api/admin-avatar.
 
-   Storage upload / delete:
-     Goes through /api/admin-avatar.
+   IMAGE UPLOAD:
+     Uses multipart/form-data.
 
-   ========================================================= */
+   IMPORTANT:
+     Do NOT manually set Content-Type when sending FormData.
+========================================================= */
 
 "use strict";
 
@@ -53,8 +54,11 @@ const SUPABASE_URL =
 const SUPABASE_PUBLISHABLE_KEY =
   "sb_publishable_zRqE9fINlvMo1WHggmU-Dg_OP5KCS9T";
 
-const SUPABASE_TABLE = "avatars";
-const SUPABASE_BUCKET = "avatars";
+const SUPABASE_TABLE =
+  "avatars";
+
+const SUPABASE_BUCKET =
+  "avatars";
 
 const ADMIN_SESSION_KEY =
   "roblox_avatar_admin_session_v4";
@@ -80,17 +84,21 @@ let supabaseClient = null;
 let avatars = [];
 
 let currentFilter = "ALL";
+
 let currentSearch = "";
 
 let editingAvatarId = null;
 
 let selectedImageFile = null;
+
 let selectedImagePreviewUrl = null;
 
 let draggedAvatarId = null;
+
 let draggedElement = null;
 
 let isSaving = false;
+
 let isLoading = false;
 
 let toastTimer = null;
@@ -105,13 +113,25 @@ function $(id) {
 }
 
 
-function query(selector, parent = document) {
-  return parent.querySelector(selector);
+function query(
+  selector,
+  parent = document
+) {
+  return parent.querySelector(
+    selector
+  );
 }
 
 
-function queryAll(selector, parent = document) {
-  return [...parent.querySelectorAll(selector)];
+function queryAll(
+  selector,
+  parent = document
+) {
+  return [
+    ...parent.querySelectorAll(
+      selector
+    )
+  ];
 }
 
 
@@ -121,11 +141,26 @@ function queryAll(selector, parent = document) {
 
 function escapeHtml(value) {
   return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(
+      /&/g,
+      "&amp;"
+    )
+    .replace(
+      /</g,
+      "&lt;"
+    )
+    .replace(
+      />/g,
+      "&gt;"
+    )
+    .replace(
+      /"/g,
+      "&quot;"
+    )
+    .replace(
+      /'/g,
+      "&#039;"
+    );
 }
 
 
@@ -136,9 +171,10 @@ function escapeHtml(value) {
 function generateId() {
   if (
     window.crypto &&
-    typeof crypto.randomUUID === "function"
+    typeof window.crypto.randomUUID ===
+      "function"
   ) {
-    return crypto.randomUUID();
+    return window.crypto.randomUUID();
   }
 
   return (
@@ -154,22 +190,32 @@ function generateId() {
    DATE
 ========================================================= */
 
-function formatDate(dateValue) {
+function formatDate(
+  dateValue
+) {
   if (!dateValue) {
     return "-";
   }
 
-  const date = new Date(dateValue);
+  const date =
+    new Date(dateValue);
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
     return "-";
   }
 
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    }
+  );
 }
 
 
@@ -177,16 +223,24 @@ function formatDate(dateValue) {
    NUMBER
 ========================================================= */
 
-function normalizeScore(value) {
-  const number = Number(value);
+function normalizeScore(
+  value
+) {
+  const number =
+    Number(value);
 
-  if (!Number.isFinite(number)) {
+  if (
+    !Number.isFinite(number)
+  ) {
     return 0;
   }
 
   return Math.min(
     10,
-    Math.max(0, number)
+    Math.max(
+      0,
+      number
+    )
   );
 }
 
@@ -195,14 +249,19 @@ function normalizeScore(value) {
    TIER
 ========================================================= */
 
-function normalizeTier(value) {
-  const tier = String(
-    value || "D"
-  )
-    .trim()
-    .toUpperCase();
+function normalizeTier(
+  value
+) {
+  const tier =
+    String(
+      value || "D"
+    )
+      .trim()
+      .toUpperCase();
 
-  return TIERS.includes(tier)
+  return TIERS.includes(
+    tier
+  )
     ? tier
     : "D";
 }
@@ -227,10 +286,6 @@ function initSupabase() {
     }
 
     if (!SUPABASE_URL) {
-      console.error(
-        "SUPABASE_URL has not been configured."
-      );
-
       showGlobalError(
         "Supabase URL belum dikonfigurasi."
       );
@@ -238,11 +293,9 @@ function initSupabase() {
       return false;
     }
 
-    if (!SUPABASE_PUBLISHABLE_KEY) {
-      console.error(
-        "SUPABASE_PUBLISHABLE_KEY has not been configured."
-      );
-
+    if (
+      !SUPABASE_PUBLISHABLE_KEY
+    ) {
       showGlobalError(
         "Supabase Publishable Key belum dikonfigurasi."
       );
@@ -257,10 +310,11 @@ function initSupabase() {
       );
 
     console.log(
-      "Supabase initialized with Publishable Key."
+      "Supabase initialized."
     );
 
     return true;
+
   } catch (error) {
     console.error(
       "Supabase initialization error:",
@@ -280,8 +334,12 @@ function initSupabase() {
    GLOBAL ERROR
 ========================================================= */
 
-function showGlobalError(message) {
-  console.error(message);
+function showGlobalError(
+  message
+) {
+  console.error(
+    message
+  );
 
   const status =
     $("searchStatus");
@@ -298,13 +356,6 @@ function showGlobalError(message) {
 
 /* =========================================================
    ADMIN SESSION
-=========================================================
-
-   IMPORTANT:
-   localStorage is ONLY used for UI state.
-
-   Actual authentication is handled by
-   HttpOnly cookie from /api/admin-login.
 ========================================================= */
 
 function saveAdminSession() {
@@ -316,6 +367,7 @@ function saveAdminSession() {
         createdAt: Date.now()
       })
     );
+
   } catch (error) {
     console.error(
       "Unable to save admin session:",
@@ -343,39 +395,36 @@ function getAdminSession() {
       !session ||
       session.authenticated !== true
     ) {
-      localStorage.removeItem(
-        ADMIN_SESSION_KEY
-      );
-
+      clearAdminSession();
       return false;
     }
 
-    const age =
-      Date.now() -
+    const createdAt =
       Number(
         session.createdAt || 0
       );
 
+    const age =
+      Date.now() -
+      createdAt;
+
     if (
+      !createdAt ||
       age > ADMIN_SESSION_MAX_AGE
     ) {
-      localStorage.removeItem(
-        ADMIN_SESSION_KEY
-      );
-
+      clearAdminSession();
       return false;
     }
 
     return true;
+
   } catch (error) {
     console.error(
       "Session error:",
       error
     );
 
-    localStorage.removeItem(
-      ADMIN_SESSION_KEY
-    );
+    clearAdminSession();
 
     return false;
   }
@@ -383,103 +432,143 @@ function getAdminSession() {
 
 
 function clearAdminSession() {
-  localStorage.removeItem(
-    ADMIN_SESSION_KEY
-  );
+  try {
+    localStorage.removeItem(
+      ADMIN_SESSION_KEY
+    );
+  } catch {
+    /* ignore */
+  }
 }
 
 
 /* =========================================================
-   ADMIN API REQUEST
+   ADMIN API
 ========================================================= */
 
-async function adminApi(action, payload = {}) {
+async function adminApi(
+  action,
+  payload = {}
+) {
+  const body =
+    payload?.body;
+
+  const isFormData =
+    body instanceof FormData;
+
   let requestBody;
-  let headers = {};
+
+  const headers = {};
 
   /*
    * =======================================================
-   * FORM DATA REQUEST
-   *
-   * Digunakan untuk:
-   * - Add avatar
-   * - Edit avatar
-   * - Upload image
-   *
-   * Jangan JSON.stringify FormData.
-   * Browser akan otomatis membuat multipart/form-data
-   * beserta boundary-nya.
+   * FORM DATA
    * =======================================================
    */
 
-  if (
-    payload.isFormData === true &&
-    payload.body instanceof FormData
-  ) {
-    requestBody = payload.body;
+  if (isFormData) {
+    requestBody =
+      body;
 
-    /*
-     * Action tetap dimasukkan ke FormData.
-     * Ini penting supaya API mengetahui operasi yang diminta.
-     */
-    if (!requestBody.has("action")) {
+    if (
+      !requestBody.has(
+        "action"
+      )
+    ) {
       requestBody.append(
         "action",
         action
       );
     }
+
+    /*
+     * IMPORTANT:
+     *
+     * DON'T DO THIS:
+     *
+     * headers["Content-Type"] =
+     *   "multipart/form-data";
+     *
+     * Browser needs to generate boundary.
+     */
   }
 
   /*
    * =======================================================
-   * JSON REQUEST
-   *
-   * Digunakan untuk:
-   * - delete
-   * - reorder
-   * - import
+   * JSON
    * =======================================================
    */
 
   else {
-    headers["Content-Type"] =
+    headers[
+      "Content-Type"
+    ] =
       "application/json";
 
-    requestBody = JSON.stringify({
-      action,
-      ...(payload.body || {})
-    });
+    requestBody =
+      JSON.stringify({
+        action,
+        ...(body || {})
+      });
   }
 
-  const response = await fetch(
-    "/api/admin-avatar",
-    {
-      method: "POST",
+  const response =
+    await fetch(
+      "/api/admin-avatar",
+      {
+        method: "POST",
 
-      credentials: "include",
+        credentials: "include",
 
-      headers,
+        headers,
 
-      body: requestBody
-    }
-  );
+        body: requestBody
+      }
+    );
+
+  /*
+   * =======================================================
+   * RESPONSE
+   * =======================================================
+   */
 
   let result = {};
 
+  const responseType =
+    response.headers.get(
+      "content-type"
+    ) || "";
+
   try {
-    result =
-      await response.json();
+    if (
+      responseType.includes(
+        "application/json"
+      )
+    ) {
+      result =
+        await response.json();
+    } else {
+      const text =
+        await response.text();
+
+      result = {
+        message: text
+      };
+    }
+
   } catch {
     result = {};
   }
 
   /*
    * =======================================================
-   * AUTH ERROR
+   * AUTH
    * =======================================================
    */
 
-  if (response.status === 401) {
+  if (
+    response.status === 401
+  ) {
     clearAdminSession();
 
     throw new Error(
@@ -489,24 +578,31 @@ async function adminApi(action, payload = {}) {
 
   /*
    * =======================================================
-   * OTHER API ERRORS
+   * ERROR
    * =======================================================
    */
 
-  if (!response.ok) {
+  if (
+    !response.ok
+  ) {
     throw new Error(
       result.message ||
+      result.error ||
       `Admin API request failed (${response.status}).`
     );
   }
 
   return result;
 }
+
+
 /* =========================================================
-   MODAL UTILITIES
+   MODAL
 ========================================================= */
 
-function openModal(element) {
+function openModal(
+  element
+) {
   if (!element) {
     return;
   }
@@ -525,7 +621,9 @@ function openModal(element) {
 }
 
 
-function closeModal(element) {
+function closeModal(
+  element
+) {
   if (!element) {
     return;
   }
@@ -571,14 +669,12 @@ function openAdminLogin() {
     $("adminLoginModal");
 
   if (!modal) {
-    console.error(
-      "adminLoginModal not found."
-    );
-
     return;
   }
 
-  if (getAdminSession()) {
+  if (
+    getAdminSession()
+  ) {
     openAdminPanel();
     return;
   }
@@ -597,11 +693,16 @@ function openAdminLogin() {
     error.textContent = "";
   }
 
-  openModal(modal);
+  openModal(
+    modal
+  );
 
-  setTimeout(() => {
-    password?.focus();
-  }, 100);
+  setTimeout(
+    () => {
+      password?.focus();
+    },
+    100
+  );
 }
 
 
@@ -641,13 +742,16 @@ async function loginAdmin() {
   }
 
   if (button) {
-    button.disabled = true;
+    button.disabled =
+      true;
+
     button.textContent =
       "Checking...";
   }
 
   if (errorElement) {
-    errorElement.textContent = "";
+    errorElement.textContent =
+      "";
   }
 
   try {
@@ -664,9 +768,10 @@ async function loginAdmin() {
 
           credentials: "include",
 
-          body: JSON.stringify({
-            password
-          })
+          body:
+            JSON.stringify({
+              password
+            })
         }
       );
 
@@ -698,6 +803,7 @@ async function loginAdmin() {
     showToast(
       "Admin access granted."
     );
+
   } catch (error) {
     console.error(
       "Admin login error:",
@@ -709,9 +815,12 @@ async function loginAdmin() {
         error.message ||
         "Login failed.";
     }
+
   } finally {
     if (button) {
-      button.disabled = false;
+      button.disabled =
+        false;
+
       button.textContent =
         "Unlock";
     }
@@ -728,10 +837,6 @@ function openAdminPanel() {
     $("adminPanel");
 
   if (!panel) {
-    console.error(
-      "adminPanel not found."
-    );
-
     return;
   }
 
@@ -779,12 +884,14 @@ async function logoutAdmin() {
       "/api/admin-login",
       {
         method: "DELETE",
+
         credentials: "include"
       }
     );
+
   } catch (error) {
     console.warn(
-      "Logout API warning:",
+      "Logout warning:",
       error
     );
   }
@@ -804,11 +911,10 @@ async function logoutAdmin() {
 ========================================================= */
 
 async function loadAvatars() {
-  if (!supabaseClient) {
-    return;
-  }
-
-  if (isLoading) {
+  if (
+    !supabaseClient ||
+    isLoading
+  ) {
     return;
   }
 
@@ -820,7 +926,9 @@ async function loadAvatars() {
       error
     } =
       await supabaseClient
-        .from(SUPABASE_TABLE)
+        .from(
+          SUPABASE_TABLE
+        )
         .select("*")
         .order(
           "sort_order",
@@ -842,9 +950,12 @@ async function loadAvatars() {
 
     renderPublic();
 
-    if (getAdminSession()) {
+    if (
+      getAdminSession()
+    ) {
       renderAdminPanel();
     }
+
   } catch (error) {
     console.error(
       "Load avatars error:",
@@ -858,6 +969,7 @@ async function loadAvatars() {
     showGlobalError(
       "Gagal mengambil data avatar dari Supabase."
     );
+
   } finally {
     isLoading = false;
   }
@@ -868,55 +980,57 @@ async function loadAvatars() {
    NORMALIZE AVATAR
 ========================================================= */
 
-function normalizeAvatar(avatar) {
+function normalizeAvatar(
+  avatar
+) {
   return {
     id:
-      avatar.id ||
+      avatar?.id ||
       generateId(),
 
     username:
-      avatar.username ||
+      avatar?.username ||
       "",
 
     display_name:
-      avatar.display_name ||
+      avatar?.display_name ||
       "",
 
     outfit_code:
-      avatar.outfit_code ||
+      avatar?.outfit_code ||
       "",
 
     profile_url:
-      avatar.profile_url ||
+      avatar?.profile_url ||
       "",
 
     image_url:
-      avatar.image_url ||
+      avatar?.image_url ||
       "",
 
     score:
       normalizeScore(
-        avatar.score
+        avatar?.score
       ),
 
     tier:
       normalizeTier(
-        avatar.tier
+        avatar?.tier
       ),
 
     comment:
-      avatar.comment ||
+      avatar?.comment ||
       "",
 
     rated_at:
-      avatar.rated_at ||
-      avatar.created_at ||
+      avatar?.rated_at ||
+      avatar?.created_at ||
       new Date().toISOString(),
 
     sort_order:
       Number.isFinite(
         Number(
-          avatar.sort_order
+          avatar?.sort_order
         )
       )
         ? Number(
@@ -925,11 +1039,11 @@ function normalizeAvatar(avatar) {
         : 0,
 
     created_at:
-      avatar.created_at ||
+      avatar?.created_at ||
       null,
 
     updated_at:
-      avatar.updated_at ||
+      avatar?.updated_at ||
       null
   };
 }
@@ -941,6 +1055,7 @@ function normalizeAvatar(avatar) {
 
 function renderPublic() {
   renderTierList();
+
   updateStatistics();
 }
 
@@ -950,9 +1065,8 @@ function renderPublic() {
 ========================================================= */
 
 function getFilteredAvatars() {
-  let result = [
-    ...avatars
-  ];
+  let result =
+    [...avatars];
 
   if (
     currentFilter !==
@@ -1020,26 +1134,23 @@ function renderTierList() {
     return;
   }
 
-  container.innerHTML = "";
+  container.innerHTML =
+    "";
 
   const filtered =
     getFilteredAvatars();
 
   if (!filtered.length) {
-    if (emptyState) {
-      emptyState.classList.remove(
-        "hidden"
-      );
-    }
+    emptyState?.classList.remove(
+      "hidden"
+    );
 
     return;
   }
 
-  if (emptyState) {
-    emptyState.classList.add(
-      "hidden"
-    );
-  }
+  emptyState?.classList.add(
+    "hidden"
+  );
 
   const groups = {};
 
@@ -1055,7 +1166,9 @@ function renderTierList() {
         normalizeTier(
           avatar.tier
         )
-      ].push(avatar);
+      ].push(
+        avatar
+      );
     }
   );
 
@@ -1097,35 +1210,49 @@ function createPublicTier(
   section.className =
     "tier-card overflow-hidden rounded-2xl border border-pastel-200/70 bg-white/80 shadow-soft";
 
-  const colorClass =
-    getTierColorClass(tier);
-
   section.innerHTML = `
-    <div class="flex items-center gap-4 border-b border-white/70 ${colorClass} px-4 py-3 sm:px-5">
+    <div class="flex items-center gap-4 border-b border-white/70 ${getTierColorClass(
+      tier
+    )} px-4 py-3 sm:px-5">
 
       <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/80 font-display text-lg font-bold text-ink-900 shadow-sm">
         ${escapeHtml(tier)}
       </div>
 
       <div class="min-w-0">
+
         <div class="font-display text-sm font-bold text-ink-900">
-          ${escapeHtml(getTierName(tier))}
+          ${escapeHtml(
+            getTierName(
+              tier
+            )
+          )}
         </div>
 
         <div class="text-[9px] font-bold uppercase tracking-widest text-ink-500">
-          ${tierAvatars.length}
-          avatar${tierAvatars.length !== 1 ? "s" : ""}
+          ${
+            tierAvatars.length
+          }
+          avatar${
+            tierAvatars.length !==
+            1
+              ? "s"
+              : ""
+          }
         </div>
+
       </div>
 
     </div>
 
     <div class="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+
       ${tierAvatars
         .map(
           createPublicAvatarCard
         )
         .join("")}
+
     </div>
   `;
 
@@ -1144,6 +1271,9 @@ function createPublicAvatarCard(
     avatar.image_url ||
     createPlaceholderAvatar();
 
+  const placeholder =
+    createPlaceholderAvatar();
+
   return `
     <button
       type="button"
@@ -1156,13 +1286,15 @@ function createPublicAvatarCard(
       <div class="relative aspect-square overflow-hidden bg-pastel-100">
 
         <img
-          src="${escapeHtml(image)}"
+          src="${escapeHtml(
+            image
+          )}"
           alt="${escapeHtml(
             avatar.username
           )}"
           loading="lazy"
           class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-          onerror="this.src='${createPlaceholderAvatar()}'"
+          onerror="this.onerror=null;this.src='${placeholder}'"
         >
 
         <div class="absolute left-2 top-2 grid h-8 w-8 place-items-center rounded-lg bg-white/90 font-display text-xs font-bold text-ink-900 shadow-sm backdrop-blur">
@@ -1185,7 +1317,10 @@ function createPublicAvatarCard(
           @${escapeHtml(
             String(
               avatar.username
-            ).replace(/^@/, "")
+            ).replace(
+              /^@/,
+              ""
+            )
           )}
         </div>
 
@@ -1233,7 +1368,9 @@ function createPlaceholderAvatar() {
    TIER HELPERS
 ========================================================= */
 
-function getTierName(tier) {
+function getTierName(
+  tier
+) {
   const names = {
     S: "Exceptional",
     A: "Very Good",
@@ -1249,7 +1386,9 @@ function getTierName(tier) {
 }
 
 
-function getTierColorClass(tier) {
+function getTierColorClass(
+  tier
+) {
   const classes = {
     S: "tier-s-bg",
     A: "tier-a-bg",
@@ -1290,7 +1429,9 @@ function updateStatistics() {
     ).length;
 
   const other =
-    total - s - a;
+    total -
+    s -
+    a;
 
   setText(
     "heroAvatarCount",
@@ -1323,7 +1464,8 @@ function setText(
   id,
   value
 ) {
-  const element = $(id);
+  const element =
+    $(id);
 
   if (element) {
     element.textContent =
@@ -1336,11 +1478,15 @@ function setText(
    AVATAR DETAIL
 ========================================================= */
 
-function openAvatarModal(id) {
+function openAvatarModal(
+  id
+) {
   const avatar =
     avatars.find(
       item =>
-        String(item.id) ===
+        String(
+          item.id
+        ) ===
         String(id)
     );
 
@@ -1354,7 +1500,10 @@ function openAvatarModal(id) {
       String(
         avatar.username ||
         ""
-      ).replace(/^@/, "")
+      ).replace(
+        /^@/,
+        ""
+      )
   );
 
   setText(
@@ -1408,9 +1557,7 @@ function openAvatarModal(id) {
       createPlaceholderAvatar();
 
     image.alt =
-      `Roblox Avatar ${
-        avatar.username
-      }`;
+      `Roblox Avatar ${avatar.username}`;
   }
 
   const profile =
@@ -1446,7 +1593,10 @@ function buildRobloxProfileUrl(
     String(
       username || ""
     )
-      .replace(/^@/, "")
+      .replace(
+        /^@/,
+        ""
+      )
       .trim();
 
   if (!cleanUsername) {
@@ -1501,10 +1651,14 @@ async function copyOutfit() {
     button.textContent =
       "Copied!";
 
-    setTimeout(() => {
-      button.textContent =
-        "Copy";
-    }, 1200);
+    setTimeout(
+      () => {
+        button.textContent =
+          "Copy";
+      },
+      1200
+    );
+
   } catch (error) {
     console.error(
       "Copy error:",
@@ -1530,7 +1684,8 @@ function renderAdminPanel() {
     return;
   }
 
-  container.innerHTML = "";
+  container.innerHTML =
+    "";
 
   TIERS.forEach(
     tier => {
@@ -1597,12 +1752,16 @@ function createAdminTier(
 
           <div class="font-display text-sm font-bold text-ink-900">
             ${escapeHtml(
-              getTierName(tier)
+              getTierName(
+                tier
+              )
             )}
           </div>
 
           <div class="text-[9px] font-bold uppercase tracking-widest text-ink-500">
-            ${tierAvatars.length}
+            ${
+              tierAvatars.length
+            }
             avatar${
               tierAvatars.length !==
               1
@@ -1638,9 +1797,6 @@ function createAdminTier(
           : `
             <div
               class="admin-drop-hint col-span-full flex min-h-[100px] items-center justify-center rounded-2xl border-2 border-dashed border-pastel-200 bg-pastel-50 px-5 text-center text-[10px] font-semibold text-ink-400"
-              data-empty-tier="${escapeHtml(
-                tier
-              )}"
             >
               Drop avatars here
             </div>
@@ -1665,6 +1821,9 @@ function createAdminAvatarCard(
     avatar.image_url ||
     createPlaceholderAvatar();
 
+  const placeholder =
+    createPlaceholderAvatar();
+
   return `
     <article
       class="admin-avatar-card group flex min-w-0 cursor-grab items-center gap-3 rounded-2xl border border-pastel-200/70 bg-white p-3 shadow-sm transition hover:shadow-card"
@@ -1675,12 +1834,14 @@ function createAdminAvatarCard(
     >
 
       <img
-        src="${escapeHtml(image)}"
+        src="${escapeHtml(
+          image
+        )}"
         alt="${escapeHtml(
           avatar.username
         )}"
         class="admin-avatar-image h-16 w-16 shrink-0 rounded-xl bg-pastel-100 object-cover"
-        onerror="this.src='${createPlaceholderAvatar()}'
+        onerror="this.onerror=null;this.src='${placeholder}'"
       >
 
       <div class="min-w-0 flex-1">
@@ -1689,7 +1850,10 @@ function createAdminAvatarCard(
           @${escapeHtml(
             String(
               avatar.username
-            ).replace(/^@/, "")
+            ).replace(
+              /^@/,
+              ""
+            )
           )}
         </div>
 
@@ -1750,11 +1914,12 @@ function createAdminAvatarCard(
 
 
 /* =========================================================
-   ADD / EDIT MODAL
+   ADD AVATAR
 ========================================================= */
 
 function openAddAvatarModal() {
-  editingAvatarId = null;
+  editingAvatarId =
+    null;
 
   resetAvatarForm();
 
@@ -1792,13 +1957,19 @@ function openAddAvatarModal() {
 }
 
 
+/* =========================================================
+   EDIT AVATAR
+========================================================= */
+
 function openEditAvatarModal(
   id
 ) {
   const avatar =
     avatars.find(
       item =>
-        String(item.id) ===
+        String(
+          item.id
+        ) ===
         String(id)
     );
 
@@ -1846,7 +2017,9 @@ function openEditAvatarModal(
     avatar.comment
   );
 
-  if (avatar.image_url) {
+  if (
+    avatar.image_url
+  ) {
     showExistingImage(
       avatar.image_url,
       "Current avatar image"
@@ -1892,21 +2065,23 @@ function closeAddAvatarModal() {
     $("addAvatarModal")
   );
 
-  editingAvatarId = null;
+  editingAvatarId =
+    null;
 
   resetImageState();
 }
 
 
 /* =========================================================
-   FORM
+   FORM HELPERS
 ========================================================= */
 
 function setInputValue(
   id,
   value
 ) {
-  const element = $(id);
+  const element =
+    $(id);
 
   if (element) {
     element.value =
@@ -1915,8 +2090,11 @@ function setInputValue(
 }
 
 
-function getInputValue(id) {
-  const element = $(id);
+function getInputValue(
+  id
+) {
+  const element =
+    $(id);
 
   return element
     ? element.value.trim()
@@ -1969,9 +2147,12 @@ function resetAvatarForm() {
 ========================================================= */
 
 function resetImageState() {
-  selectedImageFile = null;
+  selectedImageFile =
+    null;
 
-  if (selectedImagePreviewUrl) {
+  if (
+    selectedImagePreviewUrl
+  ) {
     URL.revokeObjectURL(
       selectedImagePreviewUrl
     );
@@ -1984,7 +2165,8 @@ function resetImageState() {
     $("avatarImageInput");
 
   if (input) {
-    input.value = "";
+    input.value =
+      "";
   }
 
   const placeholder =
@@ -2009,7 +2191,8 @@ function resetImageState() {
     $("imagePreview");
 
   if (preview) {
-    preview.src = "";
+    preview.src =
+      "";
   }
 
   setText(
@@ -2018,6 +2201,10 @@ function resetImageState() {
   );
 }
 
+
+/* =========================================================
+   EXISTING IMAGE
+========================================================= */
 
 function showExistingImage(
   url,
@@ -2045,7 +2232,8 @@ function showExistingImage(
   }
 
   if (preview) {
-    preview.src = url;
+    preview.src =
+      url;
   }
 
   setText(
@@ -2055,14 +2243,26 @@ function showExistingImage(
 }
 
 
-function handleImageFile(file) {
-  if (!file) {
-    return;
+/* =========================================================
+   IMAGE VALIDATION
+========================================================= */
+
+function validateImageFile(
+  file
+) {
+  if (
+    !(file instanceof File)
+  ) {
+    return {
+      valid: false,
+      message:
+        "Invalid image file."
+    };
   }
 
   const allowedTypes = [
-    "image/png",
     "image/jpeg",
+    "image/png",
     "image/webp"
   ];
 
@@ -2071,19 +2271,59 @@ function handleImageFile(file) {
       file.type
     )
   ) {
-    showToast(
-      "Only PNG, JPG, and WebP images are allowed."
-    );
-
-    return;
+    return {
+      valid: false,
+      message:
+        "Only JPG, PNG, and WebP images are allowed."
+    };
   }
+
+  /*
+   * 10 MB frontend limit.
+   *
+   * Server should ALSO validate this.
+   */
 
   const maxSize =
     10 * 1024 * 1024;
 
-  if (file.size > maxSize) {
+  if (
+    file.size > maxSize
+  ) {
+    return {
+      valid: false,
+      message:
+        "Maximum image size is 10 MB."
+    };
+  }
+
+  return {
+    valid: true
+  };
+}
+
+
+/* =========================================================
+   HANDLE IMAGE
+========================================================= */
+
+function handleImageFile(
+  file
+) {
+  if (!file) {
+    return;
+  }
+
+  const validation =
+    validateImageFile(
+      file
+    );
+
+  if (
+    !validation.valid
+  ) {
     showToast(
-      "Maximum image size is 10 MB."
+      validation.message
     );
 
     return;
@@ -2092,7 +2332,9 @@ function handleImageFile(file) {
   selectedImageFile =
     file;
 
-  if (selectedImagePreviewUrl) {
+  if (
+    selectedImagePreviewUrl
+  ) {
     URL.revokeObjectURL(
       selectedImagePreviewUrl
     );
@@ -2184,6 +2426,12 @@ async function saveAvatar() {
       "avatarComment"
     );
 
+  /*
+   * =======================================================
+   * VALIDATION
+   * =======================================================
+   */
+
   if (!username) {
     showToast(
       "Roblox username is required."
@@ -2204,9 +2452,17 @@ async function saveAvatar() {
     return;
   }
 
+  /*
+   * ADD:
+   * image required
+   *
+   * EDIT:
+   * image optional
+   */
+
   if (
     !editingAvatarId &&
-    !selectedImageFile
+    !(selectedImageFile instanceof File)
   ) {
     showToast(
       "Avatar screenshot is required."
@@ -2218,63 +2474,105 @@ async function saveAvatar() {
   const button =
     $("saveAvatar");
 
-  isSaving = true;
+  isSaving =
+    true;
 
   if (button) {
-    button.disabled = true;
+    button.disabled =
+      true;
 
     button.textContent =
       "Saving...";
   }
 
-  try {
-    const avatarId =
-      editingAvatarId ||
-      generateId();
+  /*
+   * =======================================================
+   * AVATAR DATA
+   * =======================================================
+   */
 
-    const existingAvatar =
-      editingAvatarId
-        ? avatars.find(
-            avatar =>
-              String(
-                avatar.id
-              ) ===
-              String(
-                editingAvatarId
-              )
-          )
-        : null;
+  const avatarId =
+    editingAvatarId ||
+    generateId();
+
+  const existingAvatar =
+    editingAvatarId
+      ? avatars.find(
+          avatar =>
+            String(
+              avatar.id
+            ) ===
+            String(
+              editingAvatarId
+            )
+        )
+      : null;
+
+  try {
+    /*
+     * =====================================================
+     * CREATE FORMDATA
+     * =====================================================
+     */
 
     const formData =
       new FormData();
+
+    /*
+     * ACTION
+     */
 
     formData.append(
       "action",
       "save"
     );
 
+    /*
+     * ID
+     */
+
     formData.append(
       "id",
-      avatarId
+      String(
+        avatarId
+      )
     );
+
+    /*
+     * USERNAME
+     */
 
     formData.append(
       "username",
-      username.replace(
-        /^@/,
-        ""
-      )
+      username
+        .replace(
+          /^@/,
+          ""
+        )
+        .trim()
     );
+
+    /*
+     * DISPLAY NAME
+     */
 
     formData.append(
       "display_name",
       displayName
     );
 
+    /*
+     * OUTFIT
+     */
+
     formData.append(
       "outfit_code",
       outfitCode
     );
+
+    /*
+     * PROFILE
+     */
 
     formData.append(
       "profile_url",
@@ -2284,20 +2582,36 @@ async function saveAvatar() {
         )
     );
 
+    /*
+     * SCORE
+     */
+
     formData.append(
       "score",
       String(score)
     );
+
+    /*
+     * TIER
+     */
 
     formData.append(
       "tier",
       tier
     );
 
+    /*
+     * COMMENT
+     */
+
     formData.append(
       "comment",
       comment
     );
+
+    /*
+     * RATED AT
+     */
 
     formData.append(
       "rated_at",
@@ -2305,17 +2619,38 @@ async function saveAvatar() {
         new Date().toISOString()
     );
 
+    /*
+     * SORT ORDER
+     */
+
     formData.append(
       "sort_order",
       String(
         existingAvatar?.sort_order ??
-          getNextSortOrder(
-            tier
-          )
+        getNextSortOrder(
+          tier
+        )
       )
     );
 
-    if (selectedImageFile) {
+    /*
+     * =====================================================
+     * IMAGE
+     * =====================================================
+     *
+     * IMPORTANT:
+     *
+     * FormData field MUST be:
+     *
+     * image
+     *
+     * Server /api/admin-avatar.js must read
+     * this exact field.
+     */
+
+    if (
+      selectedImageFile instanceof File
+    ) {
       formData.append(
         "image",
         selectedImageFile,
@@ -2323,19 +2658,97 @@ async function saveAvatar() {
       );
     }
 
+    /*
+     * =====================================================
+     * DEBUG
+     * =====================================================
+     */
+
+    console.log(
+      "[Avatar] Saving..."
+    );
+
+    console.log(
+      "[Avatar] ID:",
+      avatarId
+    );
+
+    console.log(
+      "[Avatar] Editing:",
+      Boolean(
+        editingAvatarId
+      )
+    );
+
+    if (
+      selectedImageFile
+    ) {
+      console.log(
+        "[Avatar] Image:",
+        {
+          name:
+            selectedImageFile.name,
+
+          type:
+            selectedImageFile.type,
+
+          size:
+            selectedImageFile.size
+        }
+      );
+    }
+
+    /*
+     * =====================================================
+     * SEND TO VERCEL
+     * =====================================================
+     */
+
     const result =
       await adminApi(
         "save",
         {
-          body: formData,
-          isFormData: true
+          body:
+            formData
         }
       );
+
+    /*
+     * =====================================================
+     * RESPONSE VALIDATION
+     * =====================================================
+     */
+
+    if (
+      !result ||
+      !result.avatar
+    ) {
+      console.error(
+        "Invalid API response:",
+        result
+      );
+
+      throw new Error(
+        "Server tidak mengembalikan data avatar."
+      );
+    }
+
+    /*
+     * =====================================================
+     * NORMALIZE
+     * =====================================================
+     */
 
     const normalized =
       normalizeAvatar(
         result.avatar
       );
+
+    /*
+     * =====================================================
+     * UPDATE LOCAL DATA
+     * =====================================================
+     */
 
     const existingIndex =
       avatars.findIndex(
@@ -2353,25 +2766,50 @@ async function saveAvatar() {
     ) {
       avatars[
         existingIndex
-      ] = normalized;
+      ] =
+        normalized;
     } else {
       avatars.push(
         normalized
       );
     }
 
+    /*
+     * =====================================================
+     * REORDER LOCAL
+     * =====================================================
+     */
+
     rebuildSortOrdersLocal();
 
+    /*
+     * =====================================================
+     * RENDER
+     * =====================================================
+     */
+
     renderPublic();
+
     renderAdminPanel();
+
+    const wasEditing =
+      Boolean(
+        existingAvatar
+      );
+
+    /*
+     * IMPORTANT:
+     * closeAddAvatarModal() resets editingAvatarId.
+     */
 
     closeAddAvatarModal();
 
     showToast(
-      existingAvatar
+      wasEditing
         ? "Avatar updated successfully."
         : "Avatar added successfully."
     );
+
   } catch (error) {
     console.error(
       "Save avatar error:",
@@ -2379,9 +2817,13 @@ async function saveAvatar() {
     );
 
     if (
-      error.message?.includes(
-        "Unauthorized"
+      String(
+        error.message || ""
       )
+        .toLowerCase()
+        .includes(
+          "unauthorized"
+        )
     ) {
       clearAdminSession();
     }
@@ -2390,14 +2832,25 @@ async function saveAvatar() {
       error.message ||
         "Failed to save avatar."
     );
+
   } finally {
-    isSaving = false;
+    isSaving =
+      false;
 
     if (button) {
-      button.disabled = false;
+      button.disabled =
+        false;
+
+      /*
+       * editingAvatarId may have been
+       * reset by closeAddAvatarModal().
+       *
+       * Use existingAvatar to determine
+       * correct button label.
+       */
 
       button.textContent =
-        editingAvatarId
+        existingAvatar
           ? "Save Changes"
           : "Save Avatar";
     }
@@ -2420,7 +2873,9 @@ function getNextSortOrder(
         ) === tier
     );
 
-  if (!tierAvatars.length) {
+  if (
+    !tierAvatars.length
+  ) {
     return 0;
   }
 
@@ -2448,7 +2903,9 @@ async function deleteAvatar(
   const avatar =
     avatars.find(
       item =>
-        String(item.id) ===
+        String(
+          item.id
+        ) ===
         String(id)
     );
 
@@ -2460,7 +2917,10 @@ async function deleteAvatar(
     avatar.username
       ? `@${String(
           avatar.username
-        ).replace(/^@/, "")}`
+        ).replace(
+          /^@/,
+          ""
+        )}`
       : "this avatar";
 
   const confirmed =
@@ -2476,9 +2936,7 @@ async function deleteAvatar(
     await adminApi(
       "delete",
       {
-        method: "POST",
         body: {
-          action: "delete",
           id
         }
       }
@@ -2487,18 +2945,22 @@ async function deleteAvatar(
     avatars =
       avatars.filter(
         item =>
-          String(item.id) !==
+          String(
+            item.id
+          ) !==
           String(id)
       );
 
     rebuildSortOrdersLocal();
 
     renderPublic();
+
     renderAdminPanel();
 
     showToast(
       "Avatar deleted successfully."
     );
+
   } catch (error) {
     console.error(
       "Delete avatar error:",
@@ -2594,7 +3056,9 @@ function setupDragAndDrop() {
         "dragging"
       );
 
-      if (event.dataTransfer) {
+      if (
+        event.dataTransfer
+      ) {
         event.dataTransfer.effectAllowed =
           "move";
 
@@ -2609,7 +3073,9 @@ function setupDragAndDrop() {
   container.addEventListener(
     "dragend",
     () => {
-      if (draggedElement) {
+      if (
+        draggedElement
+      ) {
         draggedElement.classList.remove(
           "dragging"
         );
@@ -2651,7 +3117,9 @@ function setupDragAndDrop() {
         "drop-active"
       );
 
-      if (event.dataTransfer) {
+      if (
+        event.dataTransfer
+      ) {
         event.dataTransfer.dropEffect =
           "move";
       }
@@ -2739,8 +3207,12 @@ async function moveAvatarToTier(
   const avatar =
     avatars.find(
       item =>
-        String(item.id) ===
-        String(avatarId)
+        String(
+          item.id
+        ) ===
+        String(
+          avatarId
+        )
     );
 
   if (!avatar) {
@@ -2787,11 +3259,6 @@ async function moveAvatarToTier(
     }
   }
 
-  /*
-   * Build target order
-   * from current data.
-   */
-
   const targetAvatars =
     avatars
       .filter(
@@ -2799,11 +3266,13 @@ async function moveAvatarToTier(
           normalizeTier(
             item.tier
           ) ===
-          targetTier &&
+            targetTier &&
           String(
             item.id
           ) !==
-            String(avatarId)
+            String(
+              avatarId
+            )
       )
       .sort(
         (a, b) =>
@@ -2861,6 +3330,7 @@ async function moveAvatarToTier(
         ? "Avatar order updated."
         : `Avatar moved to ${targetTier} tier.`
     );
+
   } catch (error) {
     console.error(
       "Drag/drop save error:",
@@ -2887,7 +3357,8 @@ async function saveAllSortOrders() {
   const updates =
     avatars.map(
       avatar => ({
-        id: avatar.id,
+        id:
+          avatar.id,
 
         tier:
           normalizeTier(
@@ -2902,17 +3373,18 @@ async function saveAllSortOrders() {
       })
     );
 
-  if (!updates.length) {
+  if (
+    !updates.length
+  ) {
     return;
   }
 
   await adminApi(
     "reorder",
     {
-      method: "POST",
       body: {
-        action: "reorder",
-        avatars: updates
+        avatars:
+          updates
       }
     }
   );
@@ -2961,9 +3433,11 @@ function setupSearch() {
   clear?.addEventListener(
     "click",
     () => {
-      input.value = "";
+      input.value =
+        "";
 
-      currentSearch = "";
+      currentSearch =
+        "";
 
       clear.classList.add(
         "hidden"
@@ -3005,7 +3479,8 @@ function updateSearchStatus() {
   }
 
   const count =
-    getFilteredAvatars().length;
+    getFilteredAvatars()
+      .length;
 
   status.textContent =
     `${count} avatar${
@@ -3020,7 +3495,7 @@ function updateSearchStatus() {
 
 
 /* =========================================================
-   FILTER BUTTONS
+   FILTER
 ========================================================= */
 
 function setupFilters() {
@@ -3096,7 +3571,9 @@ async function importDataFile(
     if (
       Array.isArray(parsed)
     ) {
-      imported = parsed;
+      imported =
+        parsed;
+
     } else if (
       Array.isArray(
         parsed.avatars
@@ -3104,13 +3581,16 @@ async function importDataFile(
     ) {
       imported =
         parsed.avatars;
+
     } else {
       throw new Error(
         "Invalid JSON format."
       );
     }
 
-    if (!imported.length) {
+    if (
+      !imported.length
+    ) {
       throw new Error(
         "No avatars found in JSON."
       );
@@ -3148,16 +3628,16 @@ async function importDataFile(
       );
 
     if (!confirmed) {
-      event.target.value = "";
+      event.target.value =
+        "";
+
       return;
     }
 
     await adminApi(
       "import",
       {
-        method: "POST",
         body: {
-          action: "import",
           avatars:
             normalized
         }
@@ -3169,6 +3649,7 @@ async function importDataFile(
     showToast(
       `${normalized.length} avatar(s) imported successfully.`
     );
+
   } catch (error) {
     console.error(
       "Import error:",
@@ -3179,8 +3660,10 @@ async function importDataFile(
       error.message ||
         "Invalid JSON file."
     );
+
   } finally {
-    event.target.value = "";
+    event.target.value =
+      "";
   }
 }
 
@@ -3199,7 +3682,8 @@ function exportData() {
     avatars:
       avatars.map(
         avatar => ({
-          id: avatar.id,
+          id:
+            avatar.id,
 
           username:
             avatar.username,
@@ -3265,7 +3749,10 @@ function exportData() {
   anchor.download =
     `roblox-avatar-tier-list-${new Date()
       .toISOString()
-      .slice(0, 10)}.json`;
+      .slice(
+        0,
+        10
+      )}.json`;
 
   document.body.appendChild(
     anchor
@@ -3336,7 +3823,7 @@ function showToast(
 
 
 /* =========================================================
-   IMAGE DROP ZONE
+   IMAGE UPLOAD
 ========================================================= */
 
 function setupImageUpload() {
@@ -3349,7 +3836,10 @@ function setupImageUpload() {
   const change =
     $("changeImage");
 
-  if (!zone || !input) {
+  if (
+    !zone ||
+    !input
+  ) {
     return;
   }
 
@@ -3383,6 +3873,8 @@ function setupImageUpload() {
   change?.addEventListener(
     "click",
     event => {
+      event.preventDefault();
+
       event.stopPropagation();
 
       input.click();
@@ -3482,7 +3974,7 @@ function setupAdminDelegation() {
 
 
 /* =========================================================
-   PUBLIC AVATAR CLICK
+   PUBLIC CLICK
 ========================================================= */
 
 function setupPublicAvatarClick() {
@@ -3524,20 +4016,17 @@ function setupAdminButton() {
 
   if (!button) {
     console.error(
-      "CRITICAL: #adminButton was not found."
+      "#adminButton not found."
     );
 
     return;
   }
 
-  console.log(
-    "Admin button initialized."
-  );
-
   button.addEventListener(
     "click",
     event => {
       event.preventDefault();
+
       event.stopPropagation();
 
       openAdminLogin();
@@ -3562,25 +4051,33 @@ function setupKeyboard() {
       }
 
       if (
-        !$("avatarModal")?.classList.contains(
+        !$(
+          "avatarModal"
+        )?.classList.contains(
           "hidden"
         )
       ) {
         closeAvatarModal();
+
         return;
       }
 
       if (
-        !$("addAvatarModal")?.classList.contains(
+        !$(
+          "addAvatarModal"
+        )?.classList.contains(
           "hidden"
         )
       ) {
         closeAddAvatarModal();
+
         return;
       }
 
       if (
-        !$("adminLoginModal")?.classList.contains(
+        !$(
+          "adminLoginModal"
+        )?.classList.contains(
           "hidden"
         )
       ) {
@@ -3589,117 +4086,133 @@ function setupKeyboard() {
     }
   );
 
-  $("adminPassword")?.addEventListener(
-    "keydown",
-    event => {
-      if (
-        event.key ===
-        "Enter"
-      ) {
-        event.preventDefault();
+  $("adminPassword")
+    ?.addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key ===
+          "Enter"
+        ) {
+          event.preventDefault();
 
-        loginAdmin();
+          loginAdmin();
+        }
       }
-    }
-  );
+    );
 }
 
 
 /* =========================================================
-   ALL BUTTONS
+   BUTTONS
 ========================================================= */
 
 function setupButtons() {
   setupAdminButton();
 
-  $("unlockAdmin")?.addEventListener(
-    "click",
-    loginAdmin
-  );
+  $("unlockAdmin")
+    ?.addEventListener(
+      "click",
+      loginAdmin
+    );
 
-  $("cancelAdmin")?.addEventListener(
-    "click",
-    closeAdminLoginModal
-  );
+  $("cancelAdmin")
+    ?.addEventListener(
+      "click",
+      closeAdminLoginModal
+    );
 
-  $("closeAdminLogin")?.addEventListener(
-    "click",
-    closeAdminLoginModal
-  );
+  $("closeAdminLogin")
+    ?.addEventListener(
+      "click",
+      closeAdminLoginModal
+    );
 
-  $("adminLoginBackdrop")?.addEventListener(
-    "click",
-    closeAdminLoginModal
-  );
+  $("adminLoginBackdrop")
+    ?.addEventListener(
+      "click",
+      closeAdminLoginModal
+    );
 
-  $("logoutAdmin")?.addEventListener(
-    "click",
-    logoutAdmin
-  );
+  $("logoutAdmin")
+    ?.addEventListener(
+      "click",
+      logoutAdmin
+    );
 
 
   /* ADD / EDIT */
 
-  $("addAvatarButton")?.addEventListener(
-    "click",
-    openAddAvatarModal
-  );
+  $("addAvatarButton")
+    ?.addEventListener(
+      "click",
+      openAddAvatarModal
+    );
 
-  $("closeAddAvatar")?.addEventListener(
-    "click",
-    closeAddAvatarModal
-  );
+  $("closeAddAvatar")
+    ?.addEventListener(
+      "click",
+      closeAddAvatarModal
+    );
 
-  $("cancelAddAvatar")?.addEventListener(
-    "click",
-    closeAddAvatarModal
-  );
+  $("cancelAddAvatar")
+    ?.addEventListener(
+      "click",
+      closeAddAvatarModal
+    );
 
-  $("addAvatarBackdrop")?.addEventListener(
-    "click",
-    closeAddAvatarModal
-  );
+  $("addAvatarBackdrop")
+    ?.addEventListener(
+      "click",
+      closeAddAvatarModal
+    );
 
-  $("saveAvatar")?.addEventListener(
-    "click",
-    saveAvatar
-  );
+  $("saveAvatar")
+    ?.addEventListener(
+      "click",
+      saveAvatar
+    );
 
 
   /* DETAIL */
 
-  $("closeModal")?.addEventListener(
-    "click",
-    closeAvatarModal
-  );
+  $("closeModal")
+    ?.addEventListener(
+      "click",
+      closeAvatarModal
+    );
 
-  $("modalBackdrop")?.addEventListener(
-    "click",
-    closeAvatarModal
-  );
+  $("modalBackdrop")
+    ?.addEventListener(
+      "click",
+      closeAvatarModal
+    );
 
-  $("copyOutfit")?.addEventListener(
-    "click",
-    copyOutfit
-  );
+  $("copyOutfit")
+    ?.addEventListener(
+      "click",
+      copyOutfit
+    );
 
 
   /* IMPORT / EXPORT */
 
-  $("exportData")?.addEventListener(
-    "click",
-    exportData
-  );
+  $("exportData")
+    ?.addEventListener(
+      "click",
+      exportData
+    );
 
-  $("importData")?.addEventListener(
-    "change",
-    importDataFile
-  );
+  $("importData")
+    ?.addEventListener(
+      "change",
+      importDataFile
+    );
 }
 
 
 /* =========================================================
-   START APPLICATION
+   INIT
 ========================================================= */
 
 async function initApp() {
@@ -3759,7 +4272,7 @@ if (
 
 
 /* =========================================================
-   DEBUG EXPORT
+   DEBUG
 ========================================================= */
 
 window.RobloxAvatarRating = {
