@@ -1,11 +1,10 @@
-// api/admin-avatar.js
+import {
+  createClient
+} from "@supabase/supabase-js";
 
-import { createClient } from "@supabase/supabase-js";
-
-
-// =========================================================
-// ENVIRONMENT
-// =========================================================
+import {
+  isAdminAuthenticated
+} from "./admin-login.js";
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL;
@@ -13,30 +12,19 @@ const SUPABASE_URL =
 const SUPABASE_SECRET_KEY =
   process.env.SUPABASE_SECRET_KEY;
 
-const ADMIN_PASSWORD =
-  process.env.ADMIN_PASSWORD;
-
-const SUPABASE_BUCKET =
+const TABLE =
   "avatars";
 
-const SUPABASE_TABLE =
+const BUCKET =
   "avatars";
 
-
-// =========================================================
-// SUPABASE ADMIN CLIENT
-// =========================================================
-
-function createAdminClient() {
-  if (!SUPABASE_URL) {
+function getSupabaseAdmin() {
+  if (
+    !SUPABASE_URL ||
+    !SUPABASE_SECRET_KEY
+  ) {
     throw new Error(
-      "SUPABASE_URL is not configured."
-    );
-  }
-
-  if (!SUPABASE_SECRET_KEY) {
-    throw new Error(
-      "SUPABASE_SECRET_KEY is not configured."
+      "Supabase server environment variables are not configured."
     );
   }
 
@@ -45,97 +33,551 @@ function createAdminClient() {
     SUPABASE_SECRET_KEY,
     {
       auth: {
-        persistSession: false,
         autoRefreshToken: false,
-        detectSessionInUrl: false
+        persistSession: false
       }
     }
   );
 }
 
-
-// =========================================================
-// RESPONSE
-// =========================================================
-
 function sendError(
-  res,
+  response,
   status,
-  message,
-  extra = {}
+  message
 ) {
-  return res.status(status).json({
-    success: false,
-    message,
-    ...extra
-  });
+  return response
+    .status(status)
+    .json({
+      success: false,
+      message
+    });
 }
 
+export default async function handler(
+  request,
+  response
+) {
+  /*
+   * =====================================================
+   * AUTHENTICATION
+   * =====================================================
+   */
 
-// =========================================================
-// AUTHENTICATION
-// =========================================================
-
-function isAuthorized(req) {
-  if (!ADMIN_PASSWORD) {
-    throw new Error(
-      "ADMIN_PASSWORD is not configured."
+  if (
+    !isAdminAuthenticated(request)
+  ) {
+    return sendError(
+      response,
+      401,
+      "Unauthorized."
     );
   }
 
-  const receivedPassword =
-    req.headers["x-admin-password"];
+  /*
+   * =====================================================
+   * SUPABASE
+   * =====================================================
+   */
 
-  if (
-    typeof receivedPassword !== "string" ||
-    receivedPassword.length === 0
-  ) {
-    return false;
+  let supabase;
+
+  try {
+    supabase =
+      getSupabaseAdmin();
+  } catch (error) {
+    console.error(
+      "Supabase initialization error:",
+      error
+    );
+
+    return sendError(
+      response,
+      500,
+      error.message
+    );
   }
 
-  return (
-    receivedPassword ===
-    ADMIN_PASSWORD
-  );
-}
+  try {
+    /*
+     * ===================================================
+     * GET
+     * ===================================================
+     */
 
+    if (
+      request.method === "GET"
+    ) {
+      const {
+        data,
+        error
+      } = await supabase
+        .from(TABLE)
+        .select("*")
+        .order(
+          "sort_order",
+          {
+            ascending: true
+          }
+        );
 
-// =========================================================
-// BODY PARSER
-// =========================================================
+      if (error) {
+        console.error(
+          "GET avatars error:",
+          error
+        );
 
-function parseBody(req) {
-  let body = req.body;
+        throw error;
+      }
 
-  if (typeof body === "string") {
-    try {
-      body = JSON.parse(body);
-    } catch {
-      body = {};
+      return response
+        .status(200)
+        .json({
+          success: true,
+          data: data || []
+        });
     }
-  }
 
-  return body || {};
+    /*
+     * ===================================================
+     * POST
+     * ===================================================
+     */
+
+    if (
+      request.method === "POST"
+    ) {
+      const contentType =
+        request.headers[
+          "content-type"
+        ] || "";
+
+      /*
+       * -----------------------------------------------
+       * JSON REQUEST
+       * -----------------------------------------------
+       */
+
+      if (
+        contentType.includes(
+          "application/json"
+        )
+      ) {
+        const body =
+          typeof request.body === "string"
+            ? JSON.parse(
+                request.body || "{}"
+              )
+            : request.body || {};
+
+        const action =
+          body.action;
+
+        /*
+         * ADD / EDIT / UPSERT
+         */
+
+        if (
+          action === "save"
+        ) {
+          const avatar =
+            body.avatar;
+
+          if (
+            !avatar ||
+            !avatar.id
+          ) {
+            return sendError(
+              response,
+              400,
+              "Avatar data is required."
+            );
+          }
+
+          const {
+            data,
+            error
+          } = await supabase
+            .from(TABLE)
+            .upsert(
+              avatar,
+              {
+                onConflict: "id"
+              }
+            )
+            .select()
+            .single();
+
+          if (error) {
+            console.error(
+              "Save avatar error:",
+              error
+            );
+
+            throw error;
+          }
+
+          return response
+            .status(200)
+            .json({
+              success: true,
+              data
+            });
+        }
+
+        /*
+         * DELETE
+         */
+
+        if (
+          action === "delete"
+        ) {
+          const id =
+            body.id;
+
+          if (!id) {
+            return sendError(
+              response,
+              400,
+              "Avatar ID is required."
+            );
+          }
+
+          /*
+           * Get image before deleting
+           */
+
+          const {
+            data: avatar,
+            error:
+              avatarError
+          } = await supabase
+            .from(TABLE)
+            .select(
+              "image_url"
+            )
+            .eq(
+              "id",
+              id
+            )
+            .maybeSingle();
+
+          if (avatarError) {
+            throw avatarError;
+          }
+
+          /*
+           * Delete database row
+           */
+
+          const {
+            error
+          } = await supabase
+            .from(TABLE)
+            .delete()
+            .eq(
+              "id",
+              id
+            );
+
+          if (error) {
+            console.error(
+              "Delete avatar error:",
+              error
+            );
+
+            throw error;
+          }
+
+          /*
+           * Delete storage image
+           */
+
+          if (
+            avatar?.image_url
+          ) {
+            const path =
+              extractStoragePath(
+                avatar.image_url
+              );
+
+            if (path) {
+              const {
+                error:
+                  storageError
+              } =
+                await supabase
+                  .storage
+                  .from(BUCKET)
+                  .remove([
+                    path
+                  ]);
+
+              if (
+                storageError
+              ) {
+                console.warn(
+                  "Storage delete warning:",
+                  storageError
+                );
+              }
+            }
+          }
+
+          return response
+            .status(200)
+            .json({
+              success: true
+            });
+        }
+
+        /*
+         * UPDATE SORT ORDERS
+         */
+
+        if (
+          action ===
+          "update-order"
+        ) {
+          const avatars =
+            Array.isArray(
+              body.avatars
+            )
+              ? body.avatars
+              : [];
+
+          if (
+            !avatars.length
+          ) {
+            return response
+              .status(200)
+              .json({
+                success: true
+              });
+          }
+
+          const updates =
+            avatars.map(
+              (avatar) => ({
+                id:
+                  avatar.id,
+
+                tier:
+                  avatar.tier,
+
+                sort_order:
+                  Number(
+                    avatar.sort_order ||
+                    0
+                  ),
+
+                updated_at:
+                  new Date()
+                    .toISOString()
+              })
+            );
+
+          const {
+            error
+          } = await supabase
+            .from(TABLE)
+            .upsert(
+              updates,
+              {
+                onConflict:
+                  "id"
+              }
+            );
+
+          if (error) {
+            console.error(
+              "Update order error:",
+              error
+            );
+
+            throw error;
+          }
+
+          return response
+            .status(200)
+            .json({
+              success: true
+            });
+        }
+
+        /*
+         * IMPORT
+         */
+
+        if (
+          action === "import"
+        ) {
+          const avatars =
+            Array.isArray(
+              body.avatars
+            )
+              ? body.avatars
+              : [];
+
+          if (
+            !avatars.length
+          ) {
+            return sendError(
+              response,
+              400,
+              "No avatars to import."
+            );
+          }
+
+          const {
+            data,
+            error
+          } = await supabase
+            .from(TABLE)
+            .upsert(
+              avatars,
+              {
+                onConflict:
+                  "id"
+              }
+            )
+            .select();
+
+          if (error) {
+            throw error;
+          }
+
+          return response
+            .status(200)
+            .json({
+              success: true,
+              data:
+                data || []
+            });
+        }
+      }
+
+      /*
+       * -----------------------------------------------
+       * MULTIPART / IMAGE UPLOAD
+       * -----------------------------------------------
+       *
+       * Untuk upload file langsung dari browser,
+       * API perlu menerima multipart.
+       *
+       * Jika script.js kamu mengirim base64,
+       * gunakan action upload-base64.
+       */
+
+      if (
+        contentType.includes(
+          "application/json"
+        )
+      ) {
+        return sendError(
+          response,
+          400,
+          "Invalid admin request."
+        );
+      }
+
+      return sendError(
+        response,
+        400,
+        "Unsupported upload format."
+      );
+    }
+
+    /*
+     * ===================================================
+     * DELETE
+     * ===================================================
+     */
+
+    if (
+      request.method === "DELETE"
+    ) {
+      const id =
+        request.query?.id;
+
+      if (!id) {
+        return sendError(
+          response,
+          400,
+          "Avatar ID is required."
+        );
+      }
+
+      const {
+        error
+      } = await supabase
+        .from(TABLE)
+        .delete()
+        .eq(
+          "id",
+          id
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      return response
+        .status(200)
+        .json({
+          success: true
+        });
+    }
+
+    response.setHeader(
+      "Allow",
+      "GET, POST, DELETE"
+    );
+
+    return sendError(
+      response,
+      405,
+      "Method not allowed."
+    );
+
+  } catch (error) {
+    console.error(
+      "Admin avatar API error:",
+      error
+    );
+
+    return response
+      .status(500)
+      .json({
+        success: false,
+        message:
+          error?.message ||
+          "Internal server error."
+      });
+  }
 }
 
 
-// =========================================================
-// STORAGE PATH
-// =========================================================
+/* =========================================================
+   STORAGE PATH
+========================================================= */
 
-function getStoragePathFromUrl(url) {
+function extractStoragePath(
+  url
+) {
   if (!url) {
     return null;
   }
 
   try {
     const marker =
-      `/storage/v1/object/public/${SUPABASE_BUCKET}/`;
+      `/storage/v1/object/public/${BUCKET}/`;
 
     const index =
       url.indexOf(marker);
 
-    if (index === -1) {
+    if (
+      index === -1
+    ) {
       return null;
     }
 
@@ -144,832 +586,7 @@ function getStoragePathFromUrl(url) {
         index + marker.length
       )
     );
-
   } catch {
     return null;
-  }
-}
-
-
-// =========================================================
-// STORAGE UPLOAD
-// =========================================================
-
-async function uploadImage(
-  supabase,
-  file
-) {
-  if (!file) {
-    throw new Error(
-      "Image file is required."
-    );
-  }
-
-  const {
-    path,
-    base64,
-    contentType
-  } = file;
-
-  if (!path) {
-    throw new Error(
-      "Storage path is required."
-    );
-  }
-
-  if (!base64) {
-    throw new Error(
-      "Image data is required."
-    );
-  }
-
-  const cleanBase64 =
-    base64.includes(",")
-      ? base64.split(",")[1]
-      : base64;
-
-  const buffer =
-    Buffer.from(
-      cleanBase64,
-      "base64"
-    );
-
-  const {
-    error
-  } =
-    await supabase
-      .storage
-      .from(SUPABASE_BUCKET)
-      .upload(
-        path,
-        buffer,
-        {
-          contentType:
-            contentType ||
-            "image/jpeg",
-
-          cacheControl:
-            "3600",
-
-          upsert:
-            true
-        }
-      );
-
-  if (error) {
-    throw error;
-  }
-
-  const {
-    data
-  } =
-    supabase
-      .storage
-      .from(SUPABASE_BUCKET)
-      .getPublicUrl(path);
-
-  return {
-    path,
-    url:
-      data.publicUrl
-  };
-}
-
-
-// =========================================================
-// STORAGE DELETE
-// =========================================================
-
-async function deleteImage(
-  supabase,
-  path
-) {
-  if (!path) {
-    return;
-  }
-
-  const {
-    error
-  } =
-    await supabase
-      .storage
-      .from(SUPABASE_BUCKET)
-      .remove([
-        path
-      ]);
-
-  if (error) {
-    console.warn(
-      "Storage delete warning:",
-      error
-    );
-  }
-}
-
-
-// =========================================================
-// ENSURE BUCKET
-// =========================================================
-
-async function ensureBucket(
-  supabase
-) {
-  const {
-    data,
-    error
-  } =
-    await supabase
-      .storage
-      .getBucket(
-        SUPABASE_BUCKET
-      );
-
-  if (!error && data) {
-    return;
-  }
-
-  const {
-    error:
-      createError
-  } =
-    await supabase
-      .storage
-      .createBucket(
-        SUPABASE_BUCKET,
-        {
-          public: true,
-          fileSizeLimit:
-            "10MB",
-          allowedMimeTypes: [
-            "image/png",
-            "image/jpeg",
-            "image/webp"
-          ]
-        }
-      );
-
-  if (
-    createError &&
-    !String(
-      createError.message || ""
-    ).toLowerCase()
-      .includes("already exists")
-  ) {
-    throw createError;
-  }
-}
-
-
-// =========================================================
-// GET AVATARS
-// =========================================================
-
-async function getAvatars(
-  supabase
-) {
-  const {
-    data,
-    error
-  } =
-    await supabase
-      .from(
-        SUPABASE_TABLE
-      )
-      .select("*")
-      .order(
-        "sort_order",
-        {
-          ascending: true
-        }
-      );
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
-}
-
-
-// =========================================================
-// CREATE AVATAR
-// =========================================================
-
-async function createAvatar(
-  supabase,
-  avatar
-) {
-  const {
-    data,
-    error
-  } =
-    await supabase
-      .from(
-        SUPABASE_TABLE
-      )
-      .insert(
-        avatar
-      )
-      .select()
-      .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-
-// =========================================================
-// UPDATE AVATAR
-// =========================================================
-
-async function updateAvatar(
-  supabase,
-  id,
-  avatar
-) {
-  const {
-    data,
-    error
-  } =
-    await supabase
-      .from(
-        SUPABASE_TABLE
-      )
-      .update(
-        avatar
-      )
-      .eq(
-        "id",
-        id
-      )
-      .select()
-      .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-
-// =========================================================
-// DELETE AVATAR
-// =========================================================
-
-async function deleteAvatarRecord(
-  supabase,
-  id
-) {
-  const {
-    data: existing,
-    error:
-      findError
-  } =
-    await supabase
-      .from(
-        SUPABASE_TABLE
-      )
-      .select(
-        "id,image_url"
-      )
-      .eq(
-        "id",
-        id
-      )
-      .single();
-
-  if (findError) {
-    throw findError;
-  }
-
-  const {
-    error
-  } =
-    await supabase
-      .from(
-        SUPABASE_TABLE
-      )
-      .delete()
-      .eq(
-        "id",
-        id
-      );
-
-  if (error) {
-    throw error;
-  }
-
-  if (
-    existing?.image_url
-  ) {
-    const path =
-      getStoragePathFromUrl(
-        existing.image_url
-      );
-
-    if (path) {
-      await deleteImage(
-        supabase,
-        path
-      );
-    }
-  }
-
-  return true;
-}
-
-
-// =========================================================
-// UPSERT SORT ORDERS
-// =========================================================
-
-async function updateSortOrders(
-  supabase,
-  avatars
-) {
-  if (
-    !Array.isArray(avatars) ||
-    avatars.length === 0
-  ) {
-    return [];
-  }
-
-  const updates =
-    avatars.map(
-      (avatar) => ({
-        id:
-          avatar.id,
-
-        tier:
-          avatar.tier,
-
-        sort_order:
-          Number(
-            avatar.sort_order || 0
-          ),
-
-        updated_at:
-          new Date()
-            .toISOString()
-      })
-    );
-
-  const {
-    data,
-    error
-  } =
-    await supabase
-      .from(
-        SUPABASE_TABLE
-      )
-      .upsert(
-        updates,
-        {
-          onConflict:
-            "id"
-        }
-      )
-      .select();
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
-}
-
-
-// =========================================================
-// MAIN HANDLER
-// =========================================================
-
-export default async function handler(
-  req,
-  res
-) {
-  res.setHeader(
-    "Cache-Control",
-    "no-store, no-cache, must-revalidate"
-  );
-
-  // =======================================================
-  // METHOD
-  // =======================================================
-
-  if (
-    ![
-      "GET",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE"
-    ].includes(req.method)
-  ) {
-    res.setHeader(
-      "Allow",
-      "GET, POST, PUT, PATCH, DELETE"
-    );
-
-    return sendError(
-      res,
-      405,
-      "Method not allowed."
-    );
-  }
-
-  // =======================================================
-  // AUTH
-  // =======================================================
-
-  try {
-    if (
-      !isAuthorized(req)
-    ) {
-      return sendError(
-        res,
-        401,
-        "Unauthorized."
-      );
-    }
-  } catch (error) {
-    console.error(
-      "Auth configuration error:",
-      error
-    );
-
-    return sendError(
-      res,
-      500,
-      error.message
-    );
-  }
-
-  // =======================================================
-  // SUPABASE
-  // =======================================================
-
-  let supabase;
-
-  try {
-    supabase =
-      createAdminClient();
-
-    /*
-     * Bucket should already exist.
-     *
-     * We do not automatically create it on every
-     * request because the bucket should preferably
-     * be created manually in Supabase Dashboard.
-     */
-  } catch (error) {
-    console.error(
-      "Supabase configuration error:",
-      error
-    );
-
-    return sendError(
-      res,
-      500,
-      error.message
-    );
-  }
-
-  // =======================================================
-  // REQUEST BODY
-  // =======================================================
-
-  const body =
-    parseBody(req);
-
-  try {
-
-    // =====================================================
-    // GET
-    // =====================================================
-
-    if (
-      req.method === "GET"
-    ) {
-      const avatars =
-        await getAvatars(
-          supabase
-        );
-
-      return res.status(200).json({
-        success: true,
-        avatars
-      });
-    }
-
-
-    // =====================================================
-    // DELETE
-    // =====================================================
-
-    if (
-      req.method === "DELETE"
-    ) {
-      const id =
-        body.id ||
-        req.query?.id;
-
-      if (!id) {
-        return sendError(
-          res,
-          400,
-          "Avatar ID is required."
-        );
-      }
-
-      await deleteAvatarRecord(
-        supabase,
-        id
-      );
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "Avatar deleted successfully."
-      });
-    }
-
-
-    // =====================================================
-    // SORT / DRAG DROP
-    // =====================================================
-
-    if (
-      body.action ===
-      "sort"
-    ) {
-      const updated =
-        await updateSortOrders(
-          supabase,
-          body.avatars
-        );
-
-      return res.status(200).json({
-        success: true,
-        avatars:
-          updated
-      });
-    }
-
-
-    // =====================================================
-    // UPLOAD
-    // =====================================================
-
-    if (
-      body.action ===
-      "upload"
-    ) {
-      const avatarId =
-        body.avatarId;
-
-      if (!avatarId) {
-        return sendError(
-          res,
-          400,
-          "avatarId is required."
-        );
-      }
-
-      const uploaded =
-        await uploadImage(
-          supabase,
-          body.file
-        );
-
-      return res.status(200).json({
-        success: true,
-        path:
-          uploaded.path,
-        url:
-          uploaded.url
-      });
-    }
-
-
-    // =====================================================
-    // DELETE STORAGE
-    // =====================================================
-
-    if (
-      body.action ===
-      "delete-storage"
-    ) {
-      let path =
-        body.path;
-
-      if (
-        !path &&
-        body.url
-      ) {
-        path =
-          getStoragePathFromUrl(
-            body.url
-          );
-      }
-
-      if (path) {
-        await deleteImage(
-          supabase,
-          path
-        );
-      }
-
-      return res.status(200).json({
-        success: true
-      });
-    }
-
-
-    // =====================================================
-    // CREATE
-    // =====================================================
-
-    if (
-      body.action ===
-      "create"
-    ) {
-      const avatar =
-        body.avatar;
-
-      if (!avatar) {
-        return sendError(
-          res,
-          400,
-          "Avatar data is required."
-        );
-      }
-
-      const data =
-        await createAvatar(
-          supabase,
-          avatar
-        );
-
-      return res.status(200).json({
-        success: true,
-        avatar:
-          data
-      });
-    }
-
-
-    // =====================================================
-    // UPDATE
-    // =====================================================
-
-    if (
-      body.action ===
-      "update"
-    ) {
-      const id =
-        body.id;
-
-      const avatar =
-        body.avatar;
-
-      if (!id) {
-        return sendError(
-          res,
-          400,
-          "Avatar ID is required."
-        );
-      }
-
-      if (!avatar) {
-        return sendError(
-          res,
-          400,
-          "Avatar data is required."
-        );
-      }
-
-      const data =
-        await updateAvatar(
-          supabase,
-          id,
-          avatar
-        );
-
-      return res.status(200).json({
-        success: true,
-        avatar:
-          data
-      });
-    }
-
-
-    // =====================================================
-    // UPSERT
-    // =====================================================
-
-    if (
-      body.action ===
-      "upsert"
-    ) {
-      const avatar =
-        body.avatar;
-
-      if (!avatar) {
-        return sendError(
-          res,
-          400,
-          "Avatar data is required."
-        );
-      }
-
-      const {
-        data,
-        error
-      } =
-        await supabase
-          .from(
-            SUPABASE_TABLE
-          )
-          .upsert(
-            avatar,
-            {
-              onConflict:
-                "id"
-            }
-          )
-          .select()
-          .single();
-
-      if (error) {
-        throw error;
-      }
-
-      return res.status(200).json({
-        success: true,
-        avatar:
-          data
-      });
-    }
-
-
-    // =====================================================
-    // UNKNOWN ACTION
-    // =====================================================
-
-    return sendError(
-      res,
-      400,
-      "Unknown admin action."
-    );
-
-  } catch (error) {
-
-    // =====================================================
-    // IMPORTANT SERVER LOG
-    // =====================================================
-
-    console.error(
-      "ADMIN AVATAR API ERROR:",
-      {
-        message:
-          error?.message,
-
-        code:
-          error?.code,
-
-        details:
-          error?.details,
-
-        hint:
-          error?.hint,
-
-        name:
-          error?.name
-      }
-    );
-
-    return res.status(500).json({
-      success: false,
-
-      message:
-        error?.message ||
-        "Internal server error.",
-
-      code:
-        error?.code ||
-        null,
-
-      details:
-        error?.details ||
-        null,
-
-      hint:
-        error?.hint ||
-        null
-    });
   }
 }
