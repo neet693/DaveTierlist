@@ -393,29 +393,76 @@ function clearAdminSession() {
    ADMIN API REQUEST
 ========================================================= */
 
-async function adminApi(
-  action,
-  payload = {}
-) {
-  const response =
-    await fetch(
-      "/api/admin-avatar",
-      {
-        method: "POST",
+async function adminApi(action, payload = {}) {
+  let requestBody;
+  let headers = {};
 
-        credentials: "same-origin",
+  /*
+   * =======================================================
+   * FORM DATA REQUEST
+   *
+   * Digunakan untuk:
+   * - Add avatar
+   * - Edit avatar
+   * - Upload image
+   *
+   * Jangan JSON.stringify FormData.
+   * Browser akan otomatis membuat multipart/form-data
+   * beserta boundary-nya.
+   * =======================================================
+   */
 
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
+  if (
+    payload.isFormData === true &&
+    payload.body instanceof FormData
+  ) {
+    requestBody = payload.body;
 
-        body: JSON.stringify({
-          action,
-          ...payload
-        })
-      }
-    );
+    /*
+     * Action tetap dimasukkan ke FormData.
+     * Ini penting supaya API mengetahui operasi yang diminta.
+     */
+    if (!requestBody.has("action")) {
+      requestBody.append(
+        "action",
+        action
+      );
+    }
+  }
+
+  /*
+   * =======================================================
+   * JSON REQUEST
+   *
+   * Digunakan untuk:
+   * - delete
+   * - reorder
+   * - import
+   * =======================================================
+   */
+
+  else {
+    headers["Content-Type"] =
+      "application/json";
+
+    requestBody = JSON.stringify({
+      action,
+      ...(payload.body || {})
+    });
+  }
+
+  const response = await fetch(
+    "/api/admin-avatar",
+    {
+      method: "POST",
+
+      credentials: "include",
+
+      headers,
+
+      body: requestBody
+    }
+  );
 
   let result = {};
 
@@ -426,6 +473,26 @@ async function adminApi(
     result = {};
   }
 
+  /*
+   * =======================================================
+   * AUTH ERROR
+   * =======================================================
+   */
+
+  if (response.status === 401) {
+    clearAdminSession();
+
+    throw new Error(
+      "Unauthorized."
+    );
+  }
+
+  /*
+   * =======================================================
+   * OTHER API ERRORS
+   * =======================================================
+   */
+
   if (!response.ok) {
     throw new Error(
       result.message ||
@@ -435,7 +502,6 @@ async function adminApi(
 
   return result;
 }
-
 /* =========================================================
    MODAL UTILITIES
 ========================================================= */
