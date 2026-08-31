@@ -1,8 +1,8 @@
+
 /* =========================================================
    ROBLOX AVATAR RATING
    SUPABASE + VERCEL
    SECURE ADMIN VERSION
-   =========================================================
 
    FRONTEND:
    - Supabase Publishable Key ONLY
@@ -14,12 +14,40 @@
    - Reorder
    - Import / Export
 
+   SECURITY:
+   - NEVER put SUPABASE_SECRET_KEY here
+   - NEVER put ADMIN_PASSWORD here
+   - Admin authentication handled by /api/admin-login
+   - Admin CRUD handled by /api/admin-avatar
+   - Browser sends HttpOnly admin cookie automatically
+
    IMPORTANT:
-   - Admin API menggunakan JSON
-   - Image dikirim sebagai Base64
-   - Tidak menggunakan multipart/FormData
-   - Admin password TIDAK disimpan di frontend
-   - Supabase Secret Key TIDAK disimpan di frontend
+   /api/admin-avatar.js expects JSON:
+
+   SAVE:
+   {
+     action: "save",
+     avatar: {...},
+     imageData: "data:image/png;base64,..."
+   }
+
+   DELETE:
+   {
+     action: "delete",
+     id: "..."
+   }
+
+   REORDER:
+   {
+     action: "update-order",
+     avatars: [...]
+   }
+
+   IMPORT:
+   {
+     action: "import",
+     avatars: [...]
+   }
 ========================================================= */
 
 "use strict";
@@ -48,7 +76,7 @@ const ADMIN_AVATAR_API =
   "/api/admin-avatar";
 
 const ADMIN_SESSION_KEY =
-  "roblox_avatar_admin_session_v5";
+  "roblox_avatar_admin_session_v6";
 
 const ADMIN_SESSION_MAX_AGE =
   8 * 60 * 60 * 1000;
@@ -71,17 +99,21 @@ let supabaseClient = null;
 let avatars = [];
 
 let currentFilter = "ALL";
+
 let currentSearch = "";
 
 let editingAvatarId = null;
 
 let selectedImageFile = null;
+
 let selectedImagePreviewUrl = null;
 
 let draggedAvatarId = null;
+
 let draggedElement = null;
 
 let isSaving = false;
+
 let isLoading = false;
 
 let toastTimer = null;
@@ -102,7 +134,9 @@ function query(selector, parent = document) {
 
 
 function queryAll(selector, parent = document) {
-  return [...parent.querySelectorAll(selector)];
+  return [
+    ...parent.querySelectorAll(selector)
+  ];
 }
 
 
@@ -151,17 +185,21 @@ function formatDate(dateValue) {
     return "-";
   }
 
-  const date = new Date(dateValue);
+  const date =
+    new Date(dateValue);
 
   if (Number.isNaN(date.getTime())) {
     return "-";
   }
 
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    }
+  );
 }
 
 
@@ -170,7 +208,8 @@ function formatDate(dateValue) {
 ========================================================= */
 
 function normalizeScore(value) {
-  const number = Number(value);
+  const number =
+    Number(value);
 
   if (!Number.isFinite(number)) {
     return 0;
@@ -178,7 +217,10 @@ function normalizeScore(value) {
 
   return Math.min(
     10,
-    Math.max(0, number)
+    Math.max(
+      0,
+      number
+    )
   );
 }
 
@@ -188,11 +230,12 @@ function normalizeScore(value) {
 ========================================================= */
 
 function normalizeTier(value) {
-  const tier = String(
-    value || "D"
-  )
-    .trim()
-    .toUpperCase();
+  const tier =
+    String(
+      value || "D"
+    )
+      .trim()
+      .toUpperCase();
 
   return TIERS.includes(tier)
     ? tier
@@ -280,7 +323,7 @@ function showGlobalError(message) {
 
 
 /* =========================================================
-   ADMIN SESSION UI
+   ADMIN UI SESSION
 ========================================================= */
 
 function saveAdminSession() {
@@ -375,83 +418,6 @@ function clearAdminSession() {
 
 
 /* =========================================================
-   FILE -> BASE64
-   =========================================================
-
-   API Vercel membaca JSON, jadi file gambar
-   dikonversi menjadi Base64 sebelum dikirim.
-========================================================= */
-
-function fileToBase64(file) {
-  return new Promise(
-    (resolve, reject) => {
-      if (!file) {
-        resolve(null);
-        return;
-      }
-
-      const reader =
-        new FileReader();
-
-      reader.onload = () => {
-        const result =
-          String(
-            reader.result || ""
-          );
-
-        /*
-         * result:
-         * data:image/png;base64,AAAA...
-         */
-
-        const commaIndex =
-          result.indexOf(",");
-
-        if (
-          commaIndex === -1
-        ) {
-          reject(
-            new Error(
-              "Failed to encode image."
-            )
-          );
-
-          return;
-        }
-
-        resolve({
-          base64:
-            result.substring(
-              commaIndex + 1
-            ),
-
-          mimeType:
-            file.type ||
-            "application/octet-stream",
-
-          fileName:
-            file.name ||
-            "avatar-image"
-        });
-      };
-
-      reader.onerror = () => {
-        reject(
-          new Error(
-            "Failed to read image file."
-          )
-        );
-      };
-
-      reader.readAsDataURL(
-        file
-      );
-    }
-  );
-}
-
-
-/* =========================================================
    ADMIN API
 ========================================================= */
 
@@ -459,16 +425,25 @@ async function adminApi(
   action,
   payload = {}
 ) {
-  /*
-   * =======================================================
-   * ALWAYS JSON
-   * =======================================================
-   */
-
-  const requestBody = {
-    action,
-    ...(payload.body || {})
+  const headers = {
+    "Content-Type":
+      "application/json"
   };
+
+  let requestBody = {
+    action
+  };
+
+  if (
+    payload &&
+    payload.body &&
+    typeof payload.body === "object"
+  ) {
+    requestBody = {
+      action,
+      ...payload.body
+    };
+  }
 
   console.log(
     "[Admin API] JSON request:",
@@ -484,13 +459,7 @@ async function adminApi(
 
         credentials: "include",
 
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          "Accept":
-            "application/json"
-        },
+        headers,
 
         body:
           JSON.stringify(
@@ -504,15 +473,18 @@ async function adminApi(
   try {
     result =
       await response.json();
-  } catch {
-    result = {};
+  } catch (error) {
+    console.warn(
+      "[Admin API] Response is not JSON:",
+      error
+    );
   }
 
-  /*
-   * =======================================================
-   * AUTH ERROR
-   * =======================================================
-   */
+  console.log(
+    "[Admin API] Response:",
+    response.status,
+    result
+  );
 
   if (
     response.status === 401
@@ -524,31 +496,18 @@ async function adminApi(
     );
   }
 
-  /*
-   * =======================================================
-   * API ERROR
-   * =======================================================
-   */
-
   if (!response.ok) {
     throw new Error(
       result.message ||
-      result.error ||
       `Admin API failed (${response.status}).`
     );
   }
 
-  /*
-   * API berhasil tetapi success=false
-   */
-
   if (
-    result &&
     result.success === false
   ) {
     throw new Error(
       result.message ||
-      result.error ||
       "Admin API request failed."
     );
   }
@@ -702,7 +661,9 @@ async function loginAdmin() {
   }
 
   if (button) {
-    button.disabled = true;
+    button.disabled =
+      true;
+
     button.textContent =
       "Checking...";
   }
@@ -723,9 +684,6 @@ async function loginAdmin() {
 
           headers: {
             "Content-Type":
-              "application/json",
-
-            "Accept":
               "application/json"
           },
 
@@ -777,7 +735,8 @@ async function loginAdmin() {
     }
   } finally {
     if (button) {
-      button.disabled = false;
+      button.disabled =
+        false;
 
       button.textContent =
         "Unlock";
@@ -840,28 +799,29 @@ function closeAdminPanel() {
 }
 
 
+/*
+ * NOTE:
+ *
+ * admin-login.js kamu saat ini hanya menerima POST.
+ * Tidak ada DELETE / logout endpoint.
+ *
+ * Karena session cookie adalah HttpOnly,
+ * JavaScript tidak bisa menghapus cookie tersebut.
+ *
+ * Jadi tombol logout di frontend:
+ * - membersihkan UI session localStorage
+ * - menutup admin panel
+ *
+ * Cookie server tetap akan expired sendiri
+ * setelah 8 jam.
+ */
 async function logoutAdmin() {
-  try {
-    await fetch(
-      ADMIN_LOGIN_API,
-      {
-        method: "DELETE",
-        credentials: "include"
-      }
-    );
-  } catch (error) {
-    console.warn(
-      "[Logout]",
-      error
-    );
-  }
-
   clearAdminSession();
 
   closeAdminPanel();
 
   showToast(
-    "Logged out successfully."
+    "Logged out from this browser UI."
   );
 }
 
@@ -887,7 +847,9 @@ async function loadAvatars() {
       error
     } =
       await supabaseClient
-        .from(SUPABASE_TABLE)
+        .from(
+          SUPABASE_TABLE
+        )
         .select("*")
         .order(
           "sort_order",
@@ -1030,6 +992,8 @@ function renderPublic() {
   renderTierList();
 
   updateStatistics();
+
+  updateSearchStatus();
 }
 
 
@@ -1520,9 +1484,7 @@ function openAvatarModal(id) {
       createPlaceholderAvatar();
 
     image.alt =
-      `Roblox Avatar ${
-        avatar.username
-      }`;
+      `Roblox Avatar ${avatar.username}`;
   }
 
   const profile =
@@ -2133,7 +2095,8 @@ function resetImageState() {
     $("avatarImageInput");
 
   if (input) {
-    input.value = "";
+    input.value =
+      "";
   }
 
   const placeholder =
@@ -2158,7 +2121,8 @@ function resetImageState() {
   }
 
   if (preview) {
-    preview.src = "";
+    preview.src =
+      "";
   }
 
   setText(
@@ -2235,7 +2199,10 @@ function handleImageFile(file) {
   const maxSize =
     10 * 1024 * 1024;
 
-  if (file.size > maxSize) {
+  if (
+    file.size >
+    maxSize
+  ) {
     showToast(
       "Maximum image size is 10 MB."
     );
@@ -2288,6 +2255,61 @@ function handleImageFile(file) {
   setText(
     "imageFileName",
     file.name
+  );
+}
+
+
+/* =========================================================
+   FILE -> BASE64 DATA URL
+========================================================= */
+
+function fileToDataUrl(file) {
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+      if (!file) {
+        resolve(null);
+
+        return;
+      }
+
+      const reader =
+        new FileReader();
+
+      reader.onload = () => {
+        const result =
+          reader.result;
+
+        if (
+          typeof result !==
+          "string"
+        ) {
+          reject(
+            new Error(
+              "Failed to read image file."
+            )
+          );
+
+          return;
+        }
+
+        resolve(result);
+      };
+
+      reader.onerror = () => {
+        reject(
+          new Error(
+            "Failed to read image file."
+          )
+        );
+      };
+
+      reader.readAsDataURL(
+        file
+      );
+    }
   );
 }
 
@@ -2365,7 +2387,7 @@ async function saveAvatar() {
   }
 
   /*
-   * New avatar wajib memiliki image.
+   * New avatar requires image.
    */
 
   if (
@@ -2382,10 +2404,16 @@ async function saveAvatar() {
   const button =
     $("saveAvatar");
 
+  const wasEditing =
+    Boolean(
+      editingAvatarId
+    );
+
   isSaving = true;
 
   if (button) {
-    button.disabled = true;
+    button.disabled =
+      true;
 
     button.textContent =
       "Saving...";
@@ -2416,19 +2444,8 @@ async function saveAvatar() {
 
     console.log(
       "[Avatar] Editing:",
-      Boolean(
-        editingAvatarId
-      )
+      wasEditing
     );
-
-    /*
-     * =====================================================
-     * IMAGE
-     * =====================================================
-     */
-
-    let imagePayload =
-      null;
 
     if (
       selectedImageFile
@@ -2446,11 +2463,6 @@ async function saveAvatar() {
             selectedImageFile.size
         }
       );
-
-      imagePayload =
-        await fileToBase64(
-          selectedImageFile
-        );
     } else {
       console.log(
         "[Avatar] Image: existing image"
@@ -2459,19 +2471,52 @@ async function saveAvatar() {
 
     /*
      * =====================================================
-     * JSON PAYLOAD
+     * CONVERT IMAGE
      * =====================================================
      */
 
-    const payload = {
+    let imageData =
+      null;
+
+    if (
+      selectedImageFile
+    ) {
+      console.log(
+        "[Avatar] Converting image to Base64..."
+      );
+
+      imageData =
+        await fileToDataUrl(
+          selectedImageFile
+        );
+
+      console.log(
+        "[Avatar] Image Base64 ready:",
+        imageData
+          ? `${imageData.substring(
+              0,
+              40
+            )}...`
+          : "none"
+      );
+    }
+
+    /*
+     * =====================================================
+     * BUILD AVATAR OBJECT
+     * =====================================================
+     */
+
+    const avatar = {
       id:
-        String(avatarId),
+        String(
+          avatarId
+        ),
 
       username:
-        username.replace(
-          /^@/,
-          ""
-        ),
+        username
+          .replace(/^@/, "")
+          .trim(),
 
       display_name:
         displayName,
@@ -2485,8 +2530,21 @@ async function saveAvatar() {
           username
         ),
 
+      /*
+       * IMPORTANT:
+       *
+       * If editing without a new image,
+       * send existing image URL.
+       *
+       * If new image exists,
+       * backend replaces it.
+       */
+      image_url:
+        existingAvatar?.image_url ||
+        null,
+
       score:
-        Number(score),
+        score,
 
       tier:
         tier,
@@ -2499,54 +2557,54 @@ async function saveAvatar() {
         new Date().toISOString(),
 
       sort_order:
-        Number(
-          existingAvatar?.sort_order ??
-          getNextSortOrder(
-            tier
-          )
+        existingAvatar?.sort_order ??
+        getNextSortOrder(
+          tier
         )
     };
 
     /*
-     * Existing image.
+     * =====================================================
+     * FINAL JSON PAYLOAD
+     * =====================================================
+     *
+     * THIS IS EXACTLY WHAT
+     * admin-avatar.js EXPECTS.
      */
 
-    if (
-      existingAvatar?.image_url
-    ) {
-      payload.existing_image_url =
-        existingAvatar.image_url;
-    }
+    const requestPayload = {
+      avatar,
 
-    /*
-     * New image.
-     *
-     * IMPORTANT:
-     * admin-avatar.js harus membaca:
-     *
-     * image_base64
-     * image_mime_type
-     * image_name
-     */
-
-    if (imagePayload) {
-      payload.image_base64 =
-        imagePayload.base64;
-
-      payload.image_mime_type =
-        imagePayload.mimeType;
-
-      payload.image_name =
-        imagePayload.fileName;
-    }
+      imageData
+    };
 
     console.log(
-      "[Avatar] Sending JSON save request."
+      "[Avatar] Sending JSON save request.",
+      {
+        action:
+          "save",
+
+        avatar: {
+          ...avatar,
+
+          /*
+           * Don't dump entire image URL/data
+           * to console.
+           */
+          image_url:
+            avatar.image_url
+        },
+
+        hasImageData:
+          Boolean(
+            imageData
+          )
+      }
     );
 
     /*
      * =====================================================
-     * SEND
+     * API
      * =====================================================
      */
 
@@ -2555,7 +2613,7 @@ async function saveAvatar() {
         "save",
         {
           body:
-            payload
+            requestPayload
         }
       );
 
@@ -2569,13 +2627,19 @@ async function saveAvatar() {
       result.avatar ||
       result.data;
 
-    if (!returnedAvatar) {
+    if (
+      !returnedAvatar
+    ) {
+      console.warn(
+        "[Avatar] API did not return avatar. Reloading..."
+      );
+
       await loadAvatars();
 
       closeAddAvatarModal();
 
       showToast(
-        existingAvatar
+        wasEditing
           ? "Avatar updated successfully."
           : "Avatar added successfully."
       );
@@ -2621,9 +2685,14 @@ async function saveAvatar() {
     closeAddAvatarModal();
 
     showToast(
-      existingAvatar
+      wasEditing
         ? "Avatar updated successfully."
         : "Avatar added successfully."
+    );
+
+    console.log(
+      "[Avatar] Save successful:",
+      normalized
     );
   } catch (error) {
     console.error(
@@ -2639,6 +2708,8 @@ async function saveAvatar() {
         )
     ) {
       clearAdminSession();
+
+      closeAdminPanel();
     }
 
     showToast(
@@ -2654,7 +2725,7 @@ async function saveAvatar() {
         false;
 
       button.textContent =
-        editingAvatarId
+        wasEditing
           ? "Save Changes"
           : "Save Avatar";
     }
@@ -2686,7 +2757,8 @@ function getNextSortOrder(
       ...tierAvatars.map(
         avatar =>
           Number(
-            avatar.sort_order || 0
+            avatar.sort_order ||
+            0
           )
       )
     ) + 1
@@ -2731,6 +2803,10 @@ async function deleteAvatar(
   }
 
   try {
+    showToast(
+      "Deleting avatar..."
+    );
+
     await adminApi(
       "delete",
       {
@@ -2773,6 +2849,8 @@ async function deleteAvatar(
         )
     ) {
       clearAdminSession();
+
+      closeAdminPanel();
     }
 
     showToast(
@@ -3093,6 +3171,12 @@ async function moveAvatarToTier(
           )
       );
 
+  const previousTier =
+    avatar.tier;
+
+  const previousOrder =
+    avatar.sort_order;
+
   avatar.tier =
     targetTier;
 
@@ -3145,6 +3229,20 @@ async function moveAvatarToTier(
       error
     );
 
+    /*
+     * Rollback local change.
+     */
+
+    avatar.tier =
+      previousTier;
+
+    avatar.sort_order =
+      previousOrder;
+
+    rebuildSortOrdersLocal();
+
+    renderAdminPanel();
+
     await loadAvatars();
 
     showToast(
@@ -3166,9 +3264,7 @@ async function saveAllSortOrders() {
     avatars.map(
       avatar => ({
         id:
-          String(
-            avatar.id
-          ),
+          avatar.id,
 
         tier:
           normalizeTier(
@@ -3186,18 +3282,8 @@ async function saveAllSortOrders() {
     return;
   }
 
-  /*
-   * IMPORTANT:
-   *
-   * API menggunakan:
-   * action = "reorder"
-   *
-   * BUKAN:
-   * action = "update-order"
-   */
-
   await adminApi(
-    "reorder",
+    "update-order",
     {
       body: {
         avatars:
@@ -3476,6 +3562,8 @@ async function importDataFile(
         )
     ) {
       clearAdminSession();
+
+      closeAdminPanel();
     }
 
     showToast(
@@ -3498,7 +3586,8 @@ function exportData() {
     exported_at:
       new Date().toISOString(),
 
-    version: 1,
+    version:
+      1,
 
     avatars:
       avatars.map(
