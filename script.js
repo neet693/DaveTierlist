@@ -2327,7 +2327,6 @@ async function saveAvatar() {
       await adminApi(
         "save",
         {
-          method: "POST",
           body: formData,
           isFormData: true
         }
