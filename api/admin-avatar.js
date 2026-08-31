@@ -1,13 +1,55 @@
 import { createClient } from "@supabase/supabase-js";
 import { isAdminAuthenticated } from "./admin-login.js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+
+/*
+=========================================================
+ROBLOX AVATAR RATING
+ADMIN AVATAR API
+=========================================================
+
+FRONTEND:
+- Supabase Publishable Key
+- Read-only public data
+
+BACKEND:
+- Supabase Secret Key
+- Admin CRUD
+- Storage upload/delete
+
+SECURITY:
+- Secret Key NEVER sent to browser
+- Admin authentication handled by HttpOnly cookie
+=========================================================
+*/
+
+
+/* ========================================================
+   ENVIRONMENT
+======================================================== */
+
+const SUPABASE_URL =
+  process.env.SUPABASE_URL;
+
+const SUPABASE_SECRET_KEY =
+  process.env.SUPABASE_SECRET_KEY;
+
+
+/* ========================================================
+   DATABASE
+======================================================== */
 
 const TABLE = "avatars";
 const BUCKET = "avatars";
 
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+
+/* ========================================================
+   LIMITS
+======================================================== */
+
+const MAX_IMAGE_SIZE =
+  10 * 1024 * 1024; // 10 MB
+
 
 const ALLOWED_IMAGE_TYPES = {
   "image/png": "png",
@@ -16,16 +58,35 @@ const ALLOWED_IMAGE_TYPES = {
 };
 
 
-/* =========================================================
-   SUPABASE ADMIN
-========================================================= */
+/* ========================================================
+   SUPABASE ADMIN CLIENT
+======================================================== */
 
 function getSupabaseAdmin() {
-  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
+  if (
+    !SUPABASE_URL
+  ) {
     throw new Error(
-      "Supabase server environment variables are not configured."
+      "SUPABASE_URL is not configured."
     );
   }
+
+  if (
+    !SUPABASE_SECRET_KEY
+  ) {
+    throw new Error(
+      "SUPABASE_SECRET_KEY is not configured."
+    );
+  }
+
+  /*
+   * IMPORTANT:
+   *
+   * This client exists ONLY on Vercel server.
+   *
+   * The secret key must NEVER be placed
+   * in frontend JavaScript.
+   */
 
   return createClient(
     SUPABASE_URL,
@@ -40,11 +101,15 @@ function getSupabaseAdmin() {
 }
 
 
-/* =========================================================
+/* ========================================================
    RESPONSE HELPERS
-========================================================= */
+======================================================== */
 
-function sendError(response, status, message) {
+function sendError(
+  response,
+  status,
+  message
+) {
   return response
     .status(status)
     .json({
@@ -54,7 +119,10 @@ function sendError(response, status, message) {
 }
 
 
-function sendSuccess(response, data = {}) {
+function sendSuccess(
+  response,
+  data = {}
+) {
   return response
     .status(200)
     .json({
@@ -64,48 +132,62 @@ function sendSuccess(response, data = {}) {
 }
 
 
-/* =========================================================
-   BODY PARSER
-========================================================= */
+/* ========================================================
+   JSON BODY
+======================================================== */
 
 function parseJsonBody(request) {
-  if (!request.body) {
+  if (
+    !request.body
+  ) {
     return {};
   }
 
-  if (typeof request.body === "object") {
+  if (
+    typeof request.body ===
+    "object"
+  ) {
     return request.body;
   }
 
   try {
-    return JSON.parse(request.body);
+    return JSON.parse(
+      request.body
+    );
   } catch {
-    throw new Error("Invalid JSON request body.");
+    throw new Error(
+      "Invalid JSON request body."
+    );
   }
 }
 
 
-/* =========================================================
+/* ========================================================
    IMAGE DATA
-========================================================= */
+======================================================== */
 
-function parseImageData(imageData) {
+function parseImageData(
+  imageData
+) {
   if (!imageData) {
     return null;
   }
 
-  if (typeof imageData !== "string") {
-    throw new Error("Invalid image data.");
+  if (
+    typeof imageData !==
+    "string"
+  ) {
+    throw new Error(
+      "Invalid image data."
+    );
   }
 
   /*
-   * Expected:
+   * Supported:
    *
-   * data:image/png;base64,AAAA...
-   *
-   * OR
-   *
-   * data:image/jpeg;base64,AAAA...
+   * data:image/png;base64,...
+   * data:image/jpeg;base64,...
+   * data:image/webp;base64,...
    */
 
   const match =
@@ -150,7 +232,10 @@ function parseImageData(imageData) {
     );
   }
 
-  if (!buffer.length) {
+  if (
+    !buffer ||
+    buffer.length === 0
+  ) {
     throw new Error(
       "Image data is empty."
     );
@@ -173,21 +258,23 @@ function parseImageData(imageData) {
 }
 
 
-/* =========================================================
+/* ========================================================
    STORAGE PATH
-========================================================= */
+======================================================== */
 
 function createStoragePath(
   avatarId,
   extension
 ) {
-  return `avatars/${avatarId}-${Date.now()}.${extension}`;
+  return (
+    `avatars/${avatarId}-${Date.now()}.${extension}`
+  );
 }
 
 
-/* =========================================================
+/* ========================================================
    PUBLIC STORAGE URL
-========================================================= */
+======================================================== */
 
 function createPublicStorageUrl(
   path
@@ -198,11 +285,13 @@ function createPublicStorageUrl(
 }
 
 
-/* =========================================================
+/* ========================================================
    EXTRACT STORAGE PATH
-========================================================= */
+======================================================== */
 
-function extractStoragePath(url) {
+function extractStoragePath(
+  url
+) {
   if (!url) {
     return null;
   }
@@ -223,15 +312,16 @@ function extractStoragePath(url) {
         index + marker.length
       )
     );
+
   } catch {
     return null;
   }
 }
 
 
-/* =========================================================
+/* ========================================================
    DELETE STORAGE FILE
-========================================================= */
+======================================================== */
 
 async function deleteStorageFile(
   supabase,
@@ -263,22 +353,23 @@ async function deleteStorageFile(
 
     if (error) {
       console.warn(
-        "Storage delete warning:",
+        "[Storage] Delete warning:",
         error
       );
     }
+
   } catch (error) {
     console.warn(
-      "Storage delete exception:",
+      "[Storage] Delete exception:",
       error
     );
   }
 }
 
 
-/* =========================================================
+/* ========================================================
    SAVE AVATAR
-========================================================= */
+======================================================== */
 
 async function saveAvatar(
   supabase,
@@ -299,11 +390,18 @@ async function saveAvatar(
   const avatarId =
     String(
       avatar.id
-    );
+    ).trim();
 
-  /*
-   * Get existing avatar.
-   */
+  if (!avatarId) {
+    throw new Error(
+      "Avatar ID is required."
+    );
+  }
+
+
+  /* ------------------------------------------------------
+     GET EXISTING
+  ------------------------------------------------------ */
 
   const {
     data: existingAvatar,
@@ -312,23 +410,37 @@ async function saveAvatar(
     await supabase
       .from(TABLE)
       .select("*")
-      .eq("id", avatarId)
+      .eq(
+        "id",
+        avatarId
+      )
       .maybeSingle();
 
   if (existingError) {
     throw existingError;
   }
 
+
+  /* ------------------------------------------------------
+     CURRENT IMAGE
+  ------------------------------------------------------ */
+
   let imageUrl =
     avatar.image_url ||
     existingAvatar?.image_url ||
     null;
 
-  /*
-   * Upload new image
-   */
+  let uploadedNewImage =
+    false;
 
-  if (body.imageData) {
+
+  /* ------------------------------------------------------
+     NEW IMAGE
+  ------------------------------------------------------ */
+
+  if (
+    body.imageData
+  ) {
     const image =
       parseImageData(
         body.imageData
@@ -339,6 +451,11 @@ async function saveAvatar(
         avatarId,
         image.extension
       );
+
+    console.log(
+      "[Storage] Uploading:",
+      path
+    );
 
     const {
       error: uploadError
@@ -363,13 +480,13 @@ async function saveAvatar(
 
     if (uploadError) {
       console.error(
-        "Storage upload error:",
+        "[Storage] Upload error:",
         uploadError
       );
 
       throw new Error(
         uploadError.message ||
-          "Failed to upload image."
+        "Failed to upload image."
       );
     }
 
@@ -378,56 +495,52 @@ async function saveAvatar(
         path
       );
 
-    /*
-     * Delete old image AFTER
-     * new image uploaded successfully.
-     */
+    uploadedNewImage =
+      true;
 
-    if (
-      existingAvatar?.image_url &&
-      existingAvatar.image_url !== imageUrl
-    ) {
-      await deleteStorageFile(
-        supabase,
-        existingAvatar.image_url
-      );
-    }
+    console.log(
+      "[Storage] Upload successful."
+    );
   }
 
-  /*
-   * Prepare database data.
-   */
+
+  /* ------------------------------------------------------
+     DATABASE OBJECT
+  ------------------------------------------------------ */
 
   const databaseAvatar = {
-    id: avatarId,
+    id:
+      avatarId,
 
     username:
       String(
-        avatar.username || ""
+        avatar.username ?? ""
       ).trim(),
 
     display_name:
       String(
-        avatar.display_name || ""
+        avatar.display_name ?? ""
       ).trim(),
 
     outfit_code:
       String(
-        avatar.outfit_code || ""
+        avatar.outfit_code ?? ""
       ).trim(),
 
     profile_url:
       String(
-        avatar.profile_url || ""
+        avatar.profile_url ?? ""
       ).trim(),
 
     image_url:
       imageUrl,
 
     score:
-      Number(
-        avatar.score || 0
-      ),
+      Number.isFinite(
+        Number(avatar.score)
+      )
+        ? Number(avatar.score)
+        : 0,
 
     tier:
       String(
@@ -438,7 +551,7 @@ async function saveAvatar(
 
     comment:
       String(
-        avatar.comment || ""
+        avatar.comment ?? ""
       ).trim(),
 
     rated_at:
@@ -447,17 +560,27 @@ async function saveAvatar(
       new Date().toISOString(),
 
     sort_order:
-      Number(
-        avatar.sort_order || 0
-      ),
+      Number.isFinite(
+        Number(avatar.sort_order)
+      )
+        ? Number(
+            avatar.sort_order
+          )
+        : 0,
 
     updated_at:
       new Date().toISOString()
   };
 
-  /*
-   * Insert / Update
-   */
+
+  /* ------------------------------------------------------
+     DATABASE UPSERT
+  ------------------------------------------------------ */
+
+  console.log(
+    "[Database] Saving avatar:",
+    avatarId
+  );
 
   const {
     data,
@@ -468,7 +591,8 @@ async function saveAvatar(
       .upsert(
         databaseAvatar,
         {
-          onConflict: "id"
+          onConflict:
+            "id"
         }
       )
       .select()
@@ -476,13 +600,14 @@ async function saveAvatar(
 
   if (error) {
     /*
-     * If DB save fails after image upload,
-     * remove newly uploaded image so
-     * we don't leave an orphan file.
+     * Database failed.
+     *
+     * Delete newly uploaded image
+     * to prevent orphaned storage files.
      */
 
     if (
-      body.imageData &&
+      uploadedNewImage &&
       imageUrl
     ) {
       await deleteStorageFile(
@@ -492,20 +617,43 @@ async function saveAvatar(
     }
 
     console.error(
-      "Save avatar database error:",
+      "[Database] Save error:",
       error
     );
 
     throw error;
   }
 
+
+  /* ------------------------------------------------------
+     DELETE OLD IMAGE
+  ------------------------------------------------------ */
+
+  if (
+    uploadedNewImage &&
+    existingAvatar?.image_url &&
+    existingAvatar.image_url !==
+      imageUrl
+  ) {
+    await deleteStorageFile(
+      supabase,
+      existingAvatar.image_url
+    );
+  }
+
+
+  console.log(
+    "[Database] Avatar saved:",
+    avatarId
+  );
+
   return data;
 }
 
 
-/* =========================================================
+/* ========================================================
    DELETE AVATAR
-========================================================= */
+======================================================== */
 
 async function deleteAvatar(
   supabase,
@@ -517,9 +665,13 @@ async function deleteAvatar(
     );
   }
 
-  /*
-   * Find avatar first.
-   */
+  const avatarId =
+    String(id).trim();
+
+
+  /* ------------------------------------------------------
+     FIND
+  ------------------------------------------------------ */
 
   const {
     data: avatar,
@@ -532,7 +684,7 @@ async function deleteAvatar(
       )
       .eq(
         "id",
-        id
+        avatarId
       )
       .maybeSingle();
 
@@ -546,9 +698,10 @@ async function deleteAvatar(
     );
   }
 
-  /*
-   * Delete DB row.
-   */
+
+  /* ------------------------------------------------------
+     DELETE DATABASE
+  ------------------------------------------------------ */
 
   const {
     error: deleteError
@@ -558,31 +711,35 @@ async function deleteAvatar(
       .delete()
       .eq(
         "id",
-        id
+        avatarId
       );
 
   if (deleteError) {
     throw deleteError;
   }
 
-  /*
-   * Delete image.
-   */
 
-  if (avatar.image_url) {
+  /* ------------------------------------------------------
+     DELETE IMAGE
+  ------------------------------------------------------ */
+
+  if (
+    avatar.image_url
+  ) {
     await deleteStorageFile(
       supabase,
       avatar.image_url
     );
   }
 
+
   return true;
 }
 
 
-/* =========================================================
+/* ========================================================
    UPDATE ORDER
-========================================================= */
+======================================================== */
 
 async function updateOrder(
   supabase,
@@ -590,22 +747,24 @@ async function updateOrder(
 ) {
   if (
     !Array.isArray(avatars) ||
-    !avatars.length
+    avatars.length === 0
   ) {
-    return;
+    return [];
   }
 
   const updates =
     avatars
       .filter(
-        avatar =>
+        (avatar) =>
           avatar &&
           avatar.id
       )
       .map(
-        avatar => ({
+        (avatar) => ({
           id:
-            avatar.id,
+            String(
+              avatar.id
+            ),
 
           tier:
             String(
@@ -615,21 +774,29 @@ async function updateOrder(
               .toUpperCase(),
 
           sort_order:
-            Number(
-              avatar.sort_order || 0
-            ),
+            Number.isFinite(
+              Number(
+                avatar.sort_order
+              )
+            )
+              ? Number(
+                  avatar.sort_order
+                )
+              : 0,
 
           updated_at:
-            new Date()
-              .toISOString()
+            new Date().toISOString()
         })
       );
 
-  if (!updates.length) {
-    return;
+  if (
+    updates.length === 0
+  ) {
+    return [];
   }
 
   const {
+    data,
     error
   } =
     await supabase
@@ -637,19 +804,23 @@ async function updateOrder(
       .upsert(
         updates,
         {
-          onConflict: "id"
+          onConflict:
+            "id"
         }
-      );
+      )
+      .select();
 
   if (error) {
     throw error;
   }
+
+  return data || [];
 }
 
 
-/* =========================================================
+/* ========================================================
    IMPORT
-========================================================= */
+======================================================== */
 
 async function importAvatars(
   supabase,
@@ -657,7 +828,7 @@ async function importAvatars(
 ) {
   if (
     !Array.isArray(avatars) ||
-    !avatars.length
+    avatars.length === 0
   ) {
     throw new Error(
       "No avatars to import."
@@ -667,39 +838,52 @@ async function importAvatars(
   const cleaned =
     avatars
       .filter(
-        avatar =>
+        (avatar) =>
           avatar &&
           avatar.id
       )
       .map(
-        avatar => ({
+        (avatar) => ({
           id:
-            avatar.id,
+            String(
+              avatar.id
+            ),
 
           username:
-            avatar.username ||
-            "",
+            String(
+              avatar.username || ""
+            ).trim(),
 
           display_name:
-            avatar.display_name ||
-            "",
+            String(
+              avatar.display_name || ""
+            ).trim(),
 
           outfit_code:
-            avatar.outfit_code ||
-            "",
+            String(
+              avatar.outfit_code || ""
+            ).trim(),
 
           profile_url:
-            avatar.profile_url ||
-            "",
+            String(
+              avatar.profile_url || ""
+            ).trim(),
 
           image_url:
-            avatar.image_url ||
-            "",
+            String(
+              avatar.image_url || ""
+            ).trim(),
 
           score:
-            Number(
-              avatar.score || 0
-            ),
+            Number.isFinite(
+              Number(
+                avatar.score
+              )
+            )
+              ? Number(
+                  avatar.score
+                )
+              : 0,
 
           tier:
             String(
@@ -709,22 +893,33 @@ async function importAvatars(
               .toUpperCase(),
 
           comment:
-            avatar.comment ||
-            "",
+            String(
+              avatar.comment || ""
+            ).trim(),
 
           rated_at:
             avatar.rated_at ||
-            new Date()
-              .toISOString(),
+            new Date().toISOString(),
 
           sort_order:
-            Number(
-              avatar.sort_order || 0
+            Number.isFinite(
+              Number(
+                avatar.sort_order
+              )
             )
+              ? Number(
+                  avatar.sort_order
+                )
+              : 0,
+
+          updated_at:
+            new Date().toISOString()
         })
       );
 
-  if (!cleaned.length) {
+  if (
+    cleaned.length === 0
+  ) {
     throw new Error(
       "No valid avatars to import."
     );
@@ -739,7 +934,8 @@ async function importAvatars(
       .upsert(
         cleaned,
         {
-          onConflict: "id"
+          onConflict:
+            "id"
         }
       )
       .select();
@@ -752,18 +948,18 @@ async function importAvatars(
 }
 
 
-/* =========================================================
+/* ========================================================
    MAIN HANDLER
-========================================================= */
+======================================================== */
 
 export default async function handler(
   request,
   response
 ) {
   /*
-   * =======================================================
-   * AUTH
-   * =======================================================
+   * ======================================================
+   * AUTHENTICATION
+   * ======================================================
    */
 
   if (
@@ -778,10 +974,11 @@ export default async function handler(
     );
   }
 
+
   /*
-   * =======================================================
+   * ======================================================
    * METHOD
-   * =======================================================
+   * ======================================================
    */
 
   if (
@@ -801,10 +998,11 @@ export default async function handler(
     );
   }
 
+
   /*
-   * =======================================================
+   * ======================================================
    * SUPABASE
-   * =======================================================
+   * ======================================================
    */
 
   let supabase;
@@ -812,9 +1010,10 @@ export default async function handler(
   try {
     supabase =
       getSupabaseAdmin();
+
   } catch (error) {
     console.error(
-      "Supabase initialization error:",
+      "[Supabase] Initialization error:",
       error
     );
 
@@ -825,10 +1024,11 @@ export default async function handler(
     );
   }
 
+
   /*
-   * =======================================================
+   * ======================================================
    * GET
-   * =======================================================
+   * ======================================================
    */
 
   if (
@@ -860,9 +1060,10 @@ export default async function handler(
             data || []
         }
       );
+
     } catch (error) {
       console.error(
-        "GET avatars error:",
+        "[Admin Avatar] GET error:",
         error
       );
 
@@ -875,10 +1076,11 @@ export default async function handler(
     }
   }
 
+
   /*
-   * =======================================================
+   * ======================================================
    * POST
-   * =======================================================
+   * ======================================================
    */
 
   try {
@@ -890,25 +1092,14 @@ export default async function handler(
     const action =
       body.action;
 
-    /*
-     * -----------------------------------------------------
-     * SAVE
-     * -----------------------------------------------------
-     */
+
+    /* ----------------------------------------------------
+       SAVE
+    ---------------------------------------------------- */
 
     if (
       action === "save"
     ) {
-      /*
-       * Frontend sends:
-       *
-       * {
-       *   action: "save",
-       *   avatar: {...},
-       *   imageData: "data:image/png;base64,..."
-       * }
-       */
-
       const avatar =
         await saveAvatar(
           supabase,
@@ -923,11 +1114,10 @@ export default async function handler(
       );
     }
 
-    /*
-     * -----------------------------------------------------
-     * DELETE
-     * -----------------------------------------------------
-     */
+
+    /* ----------------------------------------------------
+       DELETE
+    ---------------------------------------------------- */
 
     if (
       action === "delete"
@@ -942,39 +1132,33 @@ export default async function handler(
       );
     }
 
-    /*
-     * -----------------------------------------------------
-     * REORDER
-     *
-     * Accept BOTH:
-     *
-     * action: "reorder"
-     *
-     * and old:
-     *
-     * action: "update-order"
-     * -----------------------------------------------------
-     */
+
+    /* ----------------------------------------------------
+       REORDER
+    ---------------------------------------------------- */
 
     if (
       action === "reorder" ||
       action === "update-order"
     ) {
-      await updateOrder(
-        supabase,
-        body.avatars
-      );
+      const data =
+        await updateOrder(
+          supabase,
+          body.avatars
+        );
 
       return sendSuccess(
-        response
+        response,
+        {
+          data
+        }
       );
     }
 
-    /*
-     * -----------------------------------------------------
-     * IMPORT
-     * -----------------------------------------------------
-     */
+
+    /* ----------------------------------------------------
+       IMPORT
+    ---------------------------------------------------- */
 
     if (
       action === "import"
@@ -993,6 +1177,11 @@ export default async function handler(
       );
     }
 
+
+    /* ----------------------------------------------------
+       UNKNOWN
+    ---------------------------------------------------- */
+
     return sendError(
       response,
       400,
@@ -1001,7 +1190,7 @@ export default async function handler(
 
   } catch (error) {
     console.error(
-      "Admin avatar API error:",
+      "[Admin Avatar API] Error:",
       error
     );
 
