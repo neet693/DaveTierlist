@@ -1,26 +1,11 @@
-// /api/admin-avatar.js
-//
-// Vercel Serverless Function
-//
-// POST /api/admin-avatar
-//
-// Actions:
-//   save
-//   delete
-//   reorder
-//   import
-//
-// Supabase Secret Key is NEVER exposed to browser.
+// api/admin-avatar.js
 
-import crypto from "crypto";
-import {
-  createClient
-} from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 
-/* =========================================================
-   CONFIG
-========================================================= */
+// =========================================================
+// ENVIRONMENT
+// =========================================================
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL;
@@ -28,18 +13,21 @@ const SUPABASE_URL =
 const SUPABASE_SECRET_KEY =
   process.env.SUPABASE_SECRET_KEY;
 
-const SESSION_COOKIE =
-  "roblox_avatar_admin";
+const ADMIN_PASSWORD =
+  process.env.ADMIN_PASSWORD;
 
-const SESSION_MAX_AGE =
-  8 * 60 * 60;
+const SUPABASE_BUCKET =
+  "avatars";
+
+const SUPABASE_TABLE =
+  "avatars";
 
 
-/* =========================================================
-   SUPABASE
-========================================================= */
+// =========================================================
+// SUPABASE ADMIN CLIENT
+// =========================================================
 
-function getSupabaseAdmin() {
+function createAdminClient() {
   if (!SUPABASE_URL) {
     throw new Error(
       "SUPABASE_URL is not configured."
@@ -57,280 +45,92 @@ function getSupabaseAdmin() {
     SUPABASE_SECRET_KEY,
     {
       auth: {
-        autoRefreshToken:
-          false,
-
-        persistSession:
-          false
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
       }
     }
   );
 }
 
 
-/* =========================================================
-   COOKIE PARSER
-========================================================= */
+// =========================================================
+// RESPONSE
+// =========================================================
 
-function getCookie(
-  request,
-  name
+function sendError(
+  res,
+  status,
+  message,
+  extra = {}
 ) {
-  const cookieHeader =
-    request.headers?.cookie ||
-    "";
-
-  const cookies =
-    cookieHeader
-      .split(";")
-      .map(
-        item =>
-          item.trim()
-      );
-
-  for (
-    const cookie of cookies
-  ) {
-    const index =
-      cookie.indexOf("=");
-
-    if (index === -1) {
-      continue;
-    }
-
-    const key =
-      cookie.substring(
-        0,
-        index
-      );
-
-    const value =
-      cookie.substring(
-        index + 1
-      );
-
-    if (
-      key === name
-    ) {
-      return decodeURIComponent(
-        value
-      );
-    }
-  }
-
-  return null;
+  return res.status(status).json({
+    success: false,
+    message,
+    ...extra
+  });
 }
 
 
-/* =========================================================
-   VERIFY SESSION
-========================================================= */
+// =========================================================
+// AUTHENTICATION
+// =========================================================
 
-function verifyAdminSession(
-  request
-) {
-  const token =
-    getCookie(
-      request,
-      SESSION_COOKIE
+function isAuthorized(req) {
+  if (!ADMIN_PASSWORD) {
+    throw new Error(
+      "ADMIN_PASSWORD is not configured."
     );
-
-  if (!token) {
-    return false;
   }
 
-  const parts =
-    token.split(".");
+  const receivedPassword =
+    req.headers["x-admin-password"];
 
   if (
-    parts.length !== 3
+    typeof receivedPassword !== "string" ||
+    receivedPassword.length === 0
   ) {
     return false;
   }
 
-  const [
-    issuedAtRaw,
-    expiresAtRaw,
-    signature
-  ] = parts;
-
-  const issuedAt =
-    Number(
-      issuedAtRaw
-    );
-
-  const expiresAt =
-    Number(
-      expiresAtRaw
-    );
-
-  if (
-    !Number.isFinite(
-      issuedAt
-    ) ||
-    !Number.isFinite(
-      expiresAt
-    ) ||
-    !signature
-  ) {
-    return false;
-  }
-
-  const now =
-    Math.floor(
-      Date.now() / 1000
-    );
-
-  /*
-   * Expired.
-   */
-  if (
-    now >= expiresAt
-  ) {
-    return false;
-  }
-
-  /*
-   * Prevent malformed/future sessions.
-   */
-  if (
-    issuedAt > now + 60
-  ) {
-    return false;
-  }
-
-  /*
-   * Prevent sessions older than
-   * configured maximum.
-   */
-  if (
-    now - issuedAt >
-    SESSION_MAX_AGE
-  ) {
-    return false;
-  }
-
-
-  /*
-   * Build signing secret.
-   */
-
-  const password =
-    process.env.ADMIN_PASSWORD;
-
-  if (!password) {
-    return false;
-  }
-
-  const secret =
-    crypto
-      .createHash("sha256")
-      .update(
-        `roblox-avatar-admin:${password}`
-      )
-      .digest();
-
-
-  /*
-   * Recreate signature.
-   */
-
-  const payload =
-    `${issuedAt}.${expiresAt}`;
-
-  const expectedSignature =
-    crypto
-      .createHmac(
-        "sha256",
-        secret
-      )
-      .update(payload)
-      .digest("base64url");
-
-
-  /*
-   * Constant-time comparison.
-   */
-
-  const a =
-    Buffer.from(
-      signature,
-      "utf8"
-    );
-
-  const b =
-    Buffer.from(
-      expectedSignature,
-      "utf8"
-    );
-
-  if (
-    a.length !==
-    b.length
-  ) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(
-    a,
-    b
+  return (
+    receivedPassword ===
+    ADMIN_PASSWORD
   );
 }
 
 
-/* =========================================================
-   CORS / SAME ORIGIN
-========================================================= */
+// =========================================================
+// BODY PARSER
+// =========================================================
 
-function validateOrigin(
-  request
-) {
-  const origin =
-    request.headers?.origin;
+function parseBody(req) {
+  let body = req.body;
 
-  /*
-   * Some same-origin requests
-   * may not contain Origin.
-   */
-  if (!origin) {
-    return true;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = {};
+    }
   }
 
-  const host =
-    request.headers?.host;
-
-  if (!host) {
-    return true;
-  }
-
-  try {
-    const originUrl =
-      new URL(origin);
-
-    return (
-      originUrl.host ===
-      host
-    );
-  } catch {
-    return false;
-  }
+  return body || {};
 }
 
 
-/* =========================================================
-   STORAGE PATH
-========================================================= */
+// =========================================================
+// STORAGE PATH
+// =========================================================
 
-function getStoragePathFromUrl(
-  url
-) {
+function getStoragePathFromUrl(url) {
   if (!url) {
     return null;
   }
 
   try {
     const marker =
-      `/storage/v1/object/public/avatars/`;
+      `/storage/v1/object/public/${SUPABASE_BUCKET}/`;
 
     const index =
       url.indexOf(marker);
@@ -341,585 +141,298 @@ function getStoragePathFromUrl(
 
     return decodeURIComponent(
       url.substring(
-        index +
-          marker.length
+        index + marker.length
       )
     );
+
   } catch {
     return null;
   }
 }
 
 
-/* =========================================================
-   FILE EXTENSION
-========================================================= */
+// =========================================================
+// STORAGE UPLOAD
+// =========================================================
 
-function getFileExtension(
-  filename
-) {
-  const clean =
-    String(
-      filename || ""
-    )
-      .split("?")[0]
-      .split("#")[0];
-
-  const parts =
-    clean.split(".");
-
-  if (
-    parts.length < 2
-  ) {
-    return "jpg";
-  }
-
-  const extension =
-    parts
-      .pop()
-      .toLowerCase();
-
-  const allowed = [
-    "jpg",
-    "jpeg",
-    "png",
-    "webp"
-  ];
-
-  return allowed.includes(
-    extension
-  )
-    ? extension
-    : "jpg";
-}
-
-
-/* =========================================================
-   SAFE STRING
-========================================================= */
-
-function stringValue(
-  value
-) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
-
-  return String(value)
-    .trim();
-}
-
-
-/* =========================================================
-   SCORE
-========================================================= */
-
-function normalizeScore(
-  value
-) {
-  const number =
-    Number(value);
-
-  if (
-    !Number.isFinite(
-      number
-    )
-  ) {
-    return 0;
-  }
-
-  return Math.min(
-    10,
-    Math.max(
-      0,
-      number
-    )
-  );
-}
-
-
-/* =========================================================
-   TIER
-========================================================= */
-
-function normalizeTier(
-  value
-) {
-  const tier =
-    String(
-      value || "D"
-    )
-      .trim()
-      .toUpperCase();
-
-  return [
-    "S",
-    "A",
-    "B",
-    "C",
-    "D"
-  ].includes(tier)
-    ? tier
-    : "D";
-}
-
-
-/* =========================================================
-   SAVE AVATAR
-========================================================= */
-
-async function saveAvatar(
+async function uploadImage(
   supabase,
-  formData
+  file
 ) {
-  const id =
-    stringValue(
-      formData.get("id")
-    );
-
-  const username =
-    stringValue(
-      formData.get(
-        "username"
-      )
-    ).replace(/^@/, "");
-
-  const displayName =
-    stringValue(
-      formData.get(
-        "display_name"
-      )
-    );
-
-  const outfitCode =
-    stringValue(
-      formData.get(
-        "outfit_code"
-      )
-    );
-
-  const profileUrl =
-    stringValue(
-      formData.get(
-        "profile_url"
-      )
-    );
-
-  const comment =
-    stringValue(
-      formData.get(
-        "comment"
-      )
-    );
-
-  const score =
-    normalizeScore(
-      formData.get("score")
-    );
-
-  const tier =
-    normalizeTier(
-      formData.get("tier")
-    );
-
-  const ratedAt =
-    stringValue(
-      formData.get(
-        "rated_at"
-      )
-    ) ||
-    new Date().toISOString();
-
-  const suppliedSortOrder =
-    Number(
-      formData.get(
-        "sort_order"
-      )
-    );
-
-  const image =
-    formData.get("image");
-
-
-  if (!id) {
+  if (!file) {
     throw new Error(
-      "Avatar ID is required."
+      "Image file is required."
     );
   }
-
-  if (!username) {
-    throw new Error(
-      "Username is required."
-    );
-  }
-
-  if (!outfitCode) {
-    throw new Error(
-      "Outfit code is required."
-    );
-  }
-
-
-  /*
-   * -------------------------------------------------------
-   * Find existing avatar
-   * -------------------------------------------------------
-   */
 
   const {
-    data: existingAvatar,
-    error: findError
+    path,
+    base64,
+    contentType
+  } = file;
+
+  if (!path) {
+    throw new Error(
+      "Storage path is required."
+    );
+  }
+
+  if (!base64) {
+    throw new Error(
+      "Image data is required."
+    );
+  }
+
+  const cleanBase64 =
+    base64.includes(",")
+      ? base64.split(",")[1]
+      : base64;
+
+  const buffer =
+    Buffer.from(
+      cleanBase64,
+      "base64"
+    );
+
+  const {
+    error
   } =
     await supabase
-      .from("avatars")
-      .select(
-        "id,image_url,sort_order,rated_at,created_at"
+      .storage
+      .from(SUPABASE_BUCKET)
+      .upload(
+        path,
+        buffer,
+        {
+          contentType:
+            contentType ||
+            "image/jpeg",
+
+          cacheControl:
+            "3600",
+
+          upsert:
+            true
+        }
+      );
+
+  if (error) {
+    throw error;
+  }
+
+  const {
+    data
+  } =
+    supabase
+      .storage
+      .from(SUPABASE_BUCKET)
+      .getPublicUrl(path);
+
+  return {
+    path,
+    url:
+      data.publicUrl
+  };
+}
+
+
+// =========================================================
+// STORAGE DELETE
+// =========================================================
+
+async function deleteImage(
+  supabase,
+  path
+) {
+  if (!path) {
+    return;
+  }
+
+  const {
+    error
+  } =
+    await supabase
+      .storage
+      .from(SUPABASE_BUCKET)
+      .remove([
+        path
+      ]);
+
+  if (error) {
+    console.warn(
+      "Storage delete warning:",
+      error
+    );
+  }
+}
+
+
+// =========================================================
+// ENSURE BUCKET
+// =========================================================
+
+async function ensureBucket(
+  supabase
+) {
+  const {
+    data,
+    error
+  } =
+    await supabase
+      .storage
+      .getBucket(
+        SUPABASE_BUCKET
+      );
+
+  if (!error && data) {
+    return;
+  }
+
+  const {
+    error:
+      createError
+  } =
+    await supabase
+      .storage
+      .createBucket(
+        SUPABASE_BUCKET,
+        {
+          public: true,
+          fileSizeLimit:
+            "10MB",
+          allowedMimeTypes: [
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+          ]
+        }
+      );
+
+  if (
+    createError &&
+    !String(
+      createError.message || ""
+    ).toLowerCase()
+      .includes("already exists")
+  ) {
+    throw createError;
+  }
+}
+
+
+// =========================================================
+// GET AVATARS
+// =========================================================
+
+async function getAvatars(
+  supabase
+) {
+  const {
+    data,
+    error
+  } =
+    await supabase
+      .from(
+        SUPABASE_TABLE
+      )
+      .select("*")
+      .order(
+        "sort_order",
+        {
+          ascending: true
+        }
+      );
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
+
+// =========================================================
+// CREATE AVATAR
+// =========================================================
+
+async function createAvatar(
+  supabase,
+  avatar
+) {
+  const {
+    data,
+    error
+  } =
+    await supabase
+      .from(
+        SUPABASE_TABLE
+      )
+      .insert(
+        avatar
+      )
+      .select()
+      .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+
+// =========================================================
+// UPDATE AVATAR
+// =========================================================
+
+async function updateAvatar(
+  supabase,
+  id,
+  avatar
+) {
+  const {
+    data,
+    error
+  } =
+    await supabase
+      .from(
+        SUPABASE_TABLE
+      )
+      .update(
+        avatar
       )
       .eq(
         "id",
         id
       )
-      .maybeSingle();
-
-  if (findError) {
-    throw findError;
-  }
-
-
-  let imageUrl =
-    existingAvatar?.image_url ||
-    "";
-
-  let oldStoragePath =
-    null;
-
-  let newStoragePath =
-    null;
-
-
-  /*
-   * -------------------------------------------------------
-   * UPLOAD NEW IMAGE
-   * -------------------------------------------------------
-   */
-
-  if (
-    image &&
-    typeof image ===
-      "object" &&
-    typeof image.arrayBuffer ===
-      "function"
-  ) {
-    /*
-     * Validate type.
-     */
-
-    const allowedTypes = [
-      "image/png",
-      "image/jpeg",
-      "image/webp"
-    ];
-
-    const contentType =
-      image.type ||
-      "application/octet-stream";
-
-    if (
-      !allowedTypes.includes(
-        contentType
-      )
-    ) {
-      throw new Error(
-        "Only PNG, JPG, and WebP images are allowed."
-      );
-    }
-
-
-    /*
-     * Validate size.
-     */
-
-    const maxSize =
-      10 * 1024 * 1024;
-
-    if (
-      image.size >
-      maxSize
-    ) {
-      throw new Error(
-        "Maximum image size is 10 MB."
-      );
-    }
-
-
-    /*
-     * Create storage path.
-     */
-
-    const extension =
-      getFileExtension(
-        image.name
-      );
-
-    newStoragePath =
-      `${id}/avatar-${Date.now()}.${extension}`;
-
-
-    /*
-     * Convert File -> ArrayBuffer.
-     */
-
-    const arrayBuffer =
-      await image.arrayBuffer();
-
-    const buffer =
-      Buffer.from(
-        arrayBuffer
-      );
-
-
-    /*
-     * Upload.
-     */
-
-    const {
-      error: uploadError
-    } =
-      await supabase
-        .storage
-        .from("avatars")
-        .upload(
-          newStoragePath,
-          buffer,
-          {
-            cacheControl:
-              "3600",
-
-            upsert:
-              false,
-
-            contentType
-          }
-        );
-
-    if (uploadError) {
-      throw uploadError;
-    }
-
-
-    /*
-     * Get public URL.
-     */
-
-    const {
-      data: publicUrlData
-    } =
-      supabase
-        .storage
-        .from("avatars")
-        .getPublicUrl(
-          newStoragePath
-        );
-
-    imageUrl =
-      publicUrlData.publicUrl;
-
-
-    /*
-     * Old image gets deleted
-     * only after DB succeeds.
-     */
-
-    if (
-      existingAvatar?.image_url
-    ) {
-      oldStoragePath =
-        getStoragePathFromUrl(
-          existingAvatar.image_url
-        );
-    }
-  }
-
-
-  /*
-   * -------------------------------------------------------
-   * SORT ORDER
-   * -------------------------------------------------------
-   */
-
-  let sortOrder =
-    Number.isFinite(
-      suppliedSortOrder
-    )
-      ? suppliedSortOrder
-      : 0;
-
-
-  /*
-   * -------------------------------------------------------
-   * PAYLOAD
-   * -------------------------------------------------------
-   */
-
-  const payload = {
-    id,
-
-    username,
-
-    display_name:
-      displayName,
-
-    outfit_code:
-      outfitCode,
-
-    profile_url:
-      profileUrl ||
-      `https://www.roblox.com/search/users?keyword=${encodeURIComponent(
-        username
-      )}`,
-
-    image_url:
-      imageUrl,
-
-    score,
-
-    tier,
-
-    comment,
-
-    rated_at:
-      ratedAt,
-
-    sort_order:
-      sortOrder,
-
-    updated_at:
-      new Date().toISOString()
-  };
-
-
-  /*
-   * Add created_at only
-   * for new avatar.
-   */
-
-  if (
-    !existingAvatar
-  ) {
-    payload.created_at =
-      new Date().toISOString();
-  }
-
-
-  /*
-   * -------------------------------------------------------
-   * UPSERT
-   * -------------------------------------------------------
-   */
-
-  const {
-    data: savedAvatar,
-    error: saveError
-  } =
-    await supabase
-      .from("avatars")
-      .upsert(
-        payload,
-        {
-          onConflict:
-            "id"
-        }
-      )
       .select()
       .single();
 
-  if (saveError) {
-    /*
-     * DB failed.
-     * Remove newly uploaded file
-     * so it doesn't become orphaned.
-     */
-
-    if (
-      newStoragePath
-    ) {
-      await supabase
-        .storage
-        .from("avatars")
-        .remove([
-          newStoragePath
-        ])
-        .catch(() => {});
-    }
-
-    throw saveError;
+  if (error) {
+    throw error;
   }
 
-
-  /*
-   * -------------------------------------------------------
-   * DELETE OLD IMAGE
-   * -------------------------------------------------------
-   */
-
-  if (
-    newStoragePath &&
-    oldStoragePath &&
-    oldStoragePath !==
-      newStoragePath
-  ) {
-    const {
-      error:
-        deleteOldError
-    } =
-      await supabase
-        .storage
-        .from("avatars")
-        .remove([
-          oldStoragePath
-        ]);
-
-    if (deleteOldError) {
-      console.warn(
-        "Old image delete warning:",
-        deleteOldError
-      );
-    }
-  }
-
-
-  return savedAvatar;
+  return data;
 }
 
 
-/* =========================================================
-   DELETE AVATAR
-========================================================= */
+// =========================================================
+// DELETE AVATAR
+// =========================================================
 
-async function deleteAvatar(
+async function deleteAvatarRecord(
   supabase,
   id
 ) {
-  if (!id) {
-    throw new Error(
-      "Avatar ID is required."
-    );
-  }
-
-
-  /*
-   * Find image first.
-   */
-
   const {
-    data: avatar,
-    error: findError
+    data: existing,
+    error:
+      findError
   } =
     await supabase
-      .from("avatars")
+      .from(
+        SUPABASE_TABLE
+      )
       .select(
         "id,image_url"
       )
@@ -927,148 +440,92 @@ async function deleteAvatar(
         "id",
         id
       )
-      .maybeSingle();
+      .single();
 
   if (findError) {
     throw findError;
   }
 
-  if (!avatar) {
-    throw new Error(
-      "Avatar not found."
-    );
-  }
-
-
-  /*
-   * Delete database record.
-   */
-
   const {
-    error: deleteError
+    error
   } =
     await supabase
-      .from("avatars")
+      .from(
+        SUPABASE_TABLE
+      )
       .delete()
       .eq(
         "id",
         id
       );
 
-  if (deleteError) {
-    throw deleteError;
+  if (error) {
+    throw error;
   }
 
+  if (
+    existing?.image_url
+  ) {
+    const path =
+      getStoragePathFromUrl(
+        existing.image_url
+      );
 
-  /*
-   * Delete storage image.
-   */
-
-  const storagePath =
-    getStoragePathFromUrl(
-      avatar.image_url
-    );
-
-  if (storagePath) {
-    const {
-      error:
-        storageError
-    } =
-      await supabase
-        .storage
-        .from("avatars")
-        .remove([
-          storagePath
-        ]);
-
-    if (storageError) {
-      console.warn(
-        "Storage delete warning:",
-        storageError
+    if (path) {
+      await deleteImage(
+        supabase,
+        path
       );
     }
   }
-
 
   return true;
 }
 
 
-/* =========================================================
-   REORDER
-========================================================= */
+// =========================================================
+// UPSERT SORT ORDERS
+// =========================================================
 
-async function reorderAvatars(
+async function updateSortOrders(
   supabase,
-  avatarList
+  avatars
 ) {
   if (
-    !Array.isArray(
-      avatarList
-    )
+    !Array.isArray(avatars) ||
+    avatars.length === 0
   ) {
-    throw new Error(
-      "Invalid avatar order."
-    );
+    return [];
   }
-
-  if (
-    avatarList.length >
-    1000
-  ) {
-    throw new Error(
-      "Too many avatars."
-    );
-  }
-
 
   const updates =
-    avatarList.map(
-      avatar => {
-        const id =
-          stringValue(
-            avatar.id
-          );
+    avatars.map(
+      (avatar) => ({
+        id:
+          avatar.id,
 
-        if (!id) {
-          throw new Error(
-            "Invalid avatar ID in reorder request."
-          );
-        }
+        tier:
+          avatar.tier,
 
-        return {
-          id,
+        sort_order:
+          Number(
+            avatar.sort_order || 0
+          ),
 
-          tier:
-            normalizeTier(
-              avatar.tier
-            ),
-
-          sort_order:
-            Math.max(
-              0,
-              Number(
-                avatar.sort_order
-              ) || 0
-            ),
-
-          updated_at:
-            new Date().toISOString()
-        };
-      }
+        updated_at:
+          new Date()
+            .toISOString()
+      })
     );
-
-
-  /*
-   * Upsert updates.
-   */
 
   const {
     data,
     error
   } =
     await supabase
-      .from("avatars")
+      .from(
+        SUPABASE_TABLE
+      )
       .upsert(
         updates,
         {
@@ -1086,516 +543,433 @@ async function reorderAvatars(
 }
 
 
-/* =========================================================
-   IMPORT
-========================================================= */
-
-async function importAvatars(
-  supabase,
-  avatarList
-) {
-  if (
-    !Array.isArray(
-      avatarList
-    )
-  ) {
-    throw new Error(
-      "Invalid avatar data."
-    );
-  }
-
-  if (
-    !avatarList.length
-  ) {
-    throw new Error(
-      "No avatars to import."
-    );
-  }
-
-  if (
-    avatarList.length >
-    1000
-  ) {
-    throw new Error(
-      "Import is limited to 1000 avatars."
-    );
-  }
-
-
-  const now =
-    new Date().toISOString();
-
-
-  const normalized =
-    avatarList.map(
-      (avatar, index) => {
-        const id =
-          stringValue(
-            avatar.id
-          );
-
-        if (!id) {
-          throw new Error(
-            `Avatar #${
-              index + 1
-            } has no ID.`
-          );
-        }
-
-        const username =
-          stringValue(
-            avatar.username
-          ).replace(
-            /^@/,
-            ""
-          );
-
-        if (!username) {
-          throw new Error(
-            `Avatar #${
-              index + 1
-            } has no username.`
-          );
-        }
-
-        return {
-          id,
-
-          username,
-
-          display_name:
-            stringValue(
-              avatar.display_name
-            ),
-
-          outfit_code:
-            stringValue(
-              avatar.outfit_code
-            ),
-
-          profile_url:
-            stringValue(
-              avatar.profile_url
-            ),
-
-          image_url:
-            stringValue(
-              avatar.image_url
-            ),
-
-          score:
-            normalizeScore(
-              avatar.score
-            ),
-
-          tier:
-            normalizeTier(
-              avatar.tier
-            ),
-
-          comment:
-            stringValue(
-              avatar.comment
-            ),
-
-          rated_at:
-            stringValue(
-              avatar.rated_at
-            ) ||
-            now,
-
-          sort_order:
-            Math.max(
-              0,
-              Number(
-                avatar.sort_order
-              ) || 0
-            ),
-
-          updated_at:
-            now
-        };
-      }
-    );
-
-
-  const {
-    data,
-    error
-  } =
-    await supabase
-      .from("avatars")
-      .upsert(
-        normalized,
-        {
-          onConflict:
-            "id"
-        }
-      )
-      .select();
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
-}
-
-
-/* =========================================================
-   PARSE FORM DATA
-========================================================= */
-
-async function parseRequest(
-  request
-) {
-  const contentType =
-    request.headers?.[
-      "content-type"
-    ] ||
-    "";
-
-  if (
-    contentType.includes(
-      "multipart/form-data"
-    )
-  ) {
-    return {
-      type: "form",
-      data:
-        await request.formData()
-    };
-  }
-
-
-  /*
-   * JSON.
-   */
-
-  let body =
-    request.body;
-
-  if (
-    typeof body ===
-    "string"
-  ) {
-    try {
-      body =
-        JSON.parse(
-          body
-        );
-    } catch {
-      body = {};
-    }
-  }
-
-  return {
-    type: "json",
-    data:
-      body || {}
-  };
-}
-
-
-/* =========================================================
-   MAIN HANDLER
-========================================================= */
+// =========================================================
+// MAIN HANDLER
+// =========================================================
 
 export default async function handler(
-  request,
-  response
+  req,
+  res
 ) {
-  /*
-   * -------------------------------------------------------
-   * METHOD
-   * -------------------------------------------------------
-   */
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate"
+  );
+
+  // =======================================================
+  // METHOD
+  // =======================================================
 
   if (
-    request.method !==
-    "POST"
+    ![
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE"
+    ].includes(req.method)
   ) {
-    response.setHeader(
+    res.setHeader(
       "Allow",
-      "POST"
+      "GET, POST, PUT, PATCH, DELETE"
     );
 
-    return response
-      .status(405)
-      .json({
-        success: false,
-        message:
-          "Method not allowed."
-      });
+    return sendError(
+      res,
+      405,
+      "Method not allowed."
+    );
   }
 
-
-  /*
-   * -------------------------------------------------------
-   * ORIGIN
-   * -------------------------------------------------------
-   */
-
-  if (
-    !validateOrigin(
-      request
-    )
-  ) {
-    return response
-      .status(403)
-      .json({
-        success: false,
-        message:
-          "Invalid request origin."
-      });
-  }
-
-
-  /*
-   * -------------------------------------------------------
-   * ADMIN AUTH
-   * -------------------------------------------------------
-   */
-
-  if (
-    !verifyAdminSession(
-      request
-    )
-  ) {
-    return response
-      .status(401)
-      .json({
-        success: false,
-        message:
-          "Unauthorized. Please login as admin."
-      });
-  }
-
+  // =======================================================
+  // AUTH
+  // =======================================================
 
   try {
-    /*
-     * -----------------------------------------------------
-     * SUPABASE ADMIN CLIENT
-     * -----------------------------------------------------
-     */
-
-    const supabase =
-      getSupabaseAdmin();
-
-
-    /*
-     * -----------------------------------------------------
-     * PARSE REQUEST
-     * -----------------------------------------------------
-     */
-
-    const parsed =
-      await parseRequest(
-        request
+    if (
+      !isAuthorized(req)
+    ) {
+      return sendError(
+        res,
+        401,
+        "Unauthorized."
       );
+    }
+  } catch (error) {
+    console.error(
+      "Auth configuration error:",
+      error
+    );
 
+    return sendError(
+      res,
+      500,
+      error.message
+    );
+  }
+
+  // =======================================================
+  // SUPABASE
+  // =======================================================
+
+  let supabase;
+
+  try {
+    supabase =
+      createAdminClient();
 
     /*
-     * -----------------------------------------------------
-     * ACTION
-     * -----------------------------------------------------
+     * Bucket should already exist.
+     *
+     * We do not automatically create it on every
+     * request because the bucket should preferably
+     * be created manually in Supabase Dashboard.
      */
+  } catch (error) {
+    console.error(
+      "Supabase configuration error:",
+      error
+    );
 
-    let action;
+    return sendError(
+      res,
+      500,
+      error.message
+    );
+  }
+
+  // =======================================================
+  // REQUEST BODY
+  // =======================================================
+
+  const body =
+    parseBody(req);
+
+  try {
+
+    // =====================================================
+    // GET
+    // =====================================================
 
     if (
-      parsed.type ===
-      "form"
+      req.method === "GET"
     ) {
-      action =
-        stringValue(
-          parsed.data.get(
-            "action"
-          )
+      const avatars =
+        await getAvatars(
+          supabase
         );
-    } else {
-      action =
-        stringValue(
-          parsed.data.action
-        );
+
+      return res.status(200).json({
+        success: true,
+        avatars
+      });
     }
 
 
-    /*
-     * -----------------------------------------------------
-     * SAVE
-     * -----------------------------------------------------
-     */
+    // =====================================================
+    // DELETE
+    // =====================================================
 
     if (
-      action ===
-      "save"
-    ) {
-      if (
-        parsed.type !==
-        "form"
-      ) {
-        return response
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Save requires multipart form data."
-          });
-      }
-
-      const avatar =
-        await saveAvatar(
-          supabase,
-          parsed.data
-        );
-
-      return response
-        .status(200)
-        .json({
-          success: true,
-          avatar
-        });
-    }
-
-
-    /*
-     * -----------------------------------------------------
-     * DELETE
-     * -----------------------------------------------------
-     */
-
-    if (
-      action ===
-      "delete"
+      req.method === "DELETE"
     ) {
       const id =
-        parsed.type ===
-        "json"
-          ? stringValue(
-              parsed.data.id
-            )
-          : stringValue(
-              parsed.data.get(
-                "id"
-              )
-            );
+        body.id ||
+        req.query?.id;
 
-      await deleteAvatar(
+      if (!id) {
+        return sendError(
+          res,
+          400,
+          "Avatar ID is required."
+        );
+      }
+
+      await deleteAvatarRecord(
         supabase,
         id
       );
 
-      return response
-        .status(200)
-        .json({
-          success: true
-        });
-    }
-
-
-    /*
-     * -----------------------------------------------------
-     * REORDER
-     * -----------------------------------------------------
-     */
-
-    if (
-      action ===
-      "reorder"
-    ) {
-      if (
-        parsed.type !==
-        "json"
-      ) {
-        return response
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Reorder requires JSON."
-          });
-      }
-
-      const data =
-        await reorderAvatars(
-          supabase,
-          parsed.data.avatars
-        );
-
-      return response
-        .status(200)
-        .json({
-          success: true,
-          avatars: data
-        });
-    }
-
-
-    /*
-     * -----------------------------------------------------
-     * IMPORT
-     * -----------------------------------------------------
-     */
-
-    if (
-      action ===
-      "import"
-    ) {
-      if (
-        parsed.type !==
-        "json"
-      ) {
-        return response
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Import requires JSON."
-          });
-      }
-
-      const data =
-        await importAvatars(
-          supabase,
-          parsed.data.avatars
-        );
-
-      return response
-        .status(200)
-        .json({
-          success: true,
-          avatars: data
-        });
-    }
-
-
-    /*
-     * -----------------------------------------------------
-     * UNKNOWN ACTION
-     * -----------------------------------------------------
-     */
-
-    return response
-      .status(400)
-      .json({
-        success: false,
+      return res.status(200).json({
+        success: true,
         message:
-          "Unknown admin action."
+          "Avatar deleted successfully."
       });
-  } catch (error) {
-    console.error(
-      "Admin avatar API error:",
-      error
+    }
+
+
+    // =====================================================
+    // SORT / DRAG DROP
+    // =====================================================
+
+    if (
+      body.action ===
+      "sort"
+    ) {
+      const updated =
+        await updateSortOrders(
+          supabase,
+          body.avatars
+        );
+
+      return res.status(200).json({
+        success: true,
+        avatars:
+          updated
+      });
+    }
+
+
+    // =====================================================
+    // UPLOAD
+    // =====================================================
+
+    if (
+      body.action ===
+      "upload"
+    ) {
+      const avatarId =
+        body.avatarId;
+
+      if (!avatarId) {
+        return sendError(
+          res,
+          400,
+          "avatarId is required."
+        );
+      }
+
+      const uploaded =
+        await uploadImage(
+          supabase,
+          body.file
+        );
+
+      return res.status(200).json({
+        success: true,
+        path:
+          uploaded.path,
+        url:
+          uploaded.url
+      });
+    }
+
+
+    // =====================================================
+    // DELETE STORAGE
+    // =====================================================
+
+    if (
+      body.action ===
+      "delete-storage"
+    ) {
+      let path =
+        body.path;
+
+      if (
+        !path &&
+        body.url
+      ) {
+        path =
+          getStoragePathFromUrl(
+            body.url
+          );
+      }
+
+      if (path) {
+        await deleteImage(
+          supabase,
+          path
+        );
+      }
+
+      return res.status(200).json({
+        success: true
+      });
+    }
+
+
+    // =====================================================
+    // CREATE
+    // =====================================================
+
+    if (
+      body.action ===
+      "create"
+    ) {
+      const avatar =
+        body.avatar;
+
+      if (!avatar) {
+        return sendError(
+          res,
+          400,
+          "Avatar data is required."
+        );
+      }
+
+      const data =
+        await createAvatar(
+          supabase,
+          avatar
+        );
+
+      return res.status(200).json({
+        success: true,
+        avatar:
+          data
+      });
+    }
+
+
+    // =====================================================
+    // UPDATE
+    // =====================================================
+
+    if (
+      body.action ===
+      "update"
+    ) {
+      const id =
+        body.id;
+
+      const avatar =
+        body.avatar;
+
+      if (!id) {
+        return sendError(
+          res,
+          400,
+          "Avatar ID is required."
+        );
+      }
+
+      if (!avatar) {
+        return sendError(
+          res,
+          400,
+          "Avatar data is required."
+        );
+      }
+
+      const data =
+        await updateAvatar(
+          supabase,
+          id,
+          avatar
+        );
+
+      return res.status(200).json({
+        success: true,
+        avatar:
+          data
+      });
+    }
+
+
+    // =====================================================
+    // UPSERT
+    // =====================================================
+
+    if (
+      body.action ===
+      "upsert"
+    ) {
+      const avatar =
+        body.avatar;
+
+      if (!avatar) {
+        return sendError(
+          res,
+          400,
+          "Avatar data is required."
+        );
+      }
+
+      const {
+        data,
+        error
+      } =
+        await supabase
+          .from(
+            SUPABASE_TABLE
+          )
+          .upsert(
+            avatar,
+            {
+              onConflict:
+                "id"
+            }
+          )
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return res.status(200).json({
+        success: true,
+        avatar:
+          data
+      });
+    }
+
+
+    // =====================================================
+    // UNKNOWN ACTION
+    // =====================================================
+
+    return sendError(
+      res,
+      400,
+      "Unknown admin action."
     );
 
-    return response
-      .status(500)
-      .json({
-        success: false,
+  } catch (error) {
+
+    // =====================================================
+    // IMPORTANT SERVER LOG
+    // =====================================================
+
+    console.error(
+      "ADMIN AVATAR API ERROR:",
+      {
         message:
-          error.message ||
-          "Server error."
-      });
+          error?.message,
+
+        code:
+          error?.code,
+
+        details:
+          error?.details,
+
+        hint:
+          error?.hint,
+
+        name:
+          error?.name
+      }
+    );
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        error?.message ||
+        "Internal server error.",
+
+      code:
+        error?.code ||
+        null,
+
+      details:
+        error?.details ||
+        null,
+
+      hint:
+        error?.hint ||
+        null
+    });
   }
 }
