@@ -1,0 +1,9 @@
+{
+  "name": "roblox-avatar-tier-list",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Roblox Avatar Rating Tier List — Vercel ready",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
